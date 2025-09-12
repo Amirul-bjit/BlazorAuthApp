@@ -1,0 +1,232 @@
+﻿@page "/blogs/create"
+@using BlazorAuthApp.DTOs
+@using BlazorAuthApp.Interfaces
+@using System.Security.Claims
+@inject IBlogService BlogService
+@inject ICategoryService CategoryService
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+
+<PageTitle>Create Blog</PageTitle>
+
+<div class="container my-4">
+
+    <!-- Top Back Button -->
+    <div class="mb-4">
+        <button type="button" class="btn btn-secondary px-4 py-2 rounded-3 fw-semibold" @onclick="BackToBlogs">
+            <i class="bi bi-arrow-left-circle me-2"></i> Back to All Blogs
+        </button>
+    </div>
+
+    <h2 class="mb-4 fw-bold text-center">Write a New Blog</h2>
+
+    <EditForm Model="createBlogDto" OnValidSubmit="HandleValidSubmit">
+        <DataAnnotationsValidator />
+
+        @if (loadingCategories)
+        {
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card shadow-sm border-0 rounded-4 p-4">
+
+                <!-- Title -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Title</label>
+                    <InputText class="@GetInputClass(createBlogDto.Title, 5, 100)" @bind-Value="createBlogDto.Title" @oninput="UpdateCharCount" />
+                    @if (submitted)
+                    {
+                        <div class="text-danger small mt-1">@GetFieldError(createBlogDto.Title, "Title", 5, 100)</div>
+                    }
+                    <small class="text-muted">Characters: @GetCharCount(createBlogDto.Title)/100</small>
+                </div>
+
+                <!-- Summary -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Summary</label>
+                    <InputTextArea class="@GetInputClass(createBlogDto.Summary, 20, 250)" @bind-Value="createBlogDto.Summary" Rows="3" @oninput="UpdateCharCount" />
+                    @if (submitted)
+                    {
+                        <div class="text-danger small mt-1">@GetFieldError(createBlogDto.Summary, "Summary", 20, 250)</div>
+                    }
+                    <small class="text-muted">Characters: @GetCharCount(createBlogDto.Summary)/250</small>
+                </div>
+
+                <!-- Content -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Content</label>
+                    <InputTextArea class="@GetInputClass(createBlogDto.Content, 50, 5000)" @bind-Value="createBlogDto.Content" Rows="6" @oninput="UpdateCharCount" />
+                    @if (submitted)
+                    {
+                        <div class="text-danger small mt-1">@GetFieldError(createBlogDto.Content, "Content", 50, 5000)</div>
+                    }
+                    <small class="text-muted">Characters: @GetCharCount(createBlogDto.Content)/5000</small>
+                </div>
+
+                <!-- Featured Image -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Featured Image URL</label>
+                    <InputText class="form-control rounded-3" @bind-Value="createBlogDto.FeaturedImageUrl" />
+                </div>
+
+                <!-- Meta Description -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Meta Description</label>
+                    <InputText class="@GetInputClass(createBlogDto.MetaDescription, 50, 160)" @bind-Value="createBlogDto.MetaDescription" @oninput="UpdateCharCount" />
+                    @if (submitted)
+                    {
+                        <div class="text-danger small mt-1">@GetFieldError(createBlogDto.MetaDescription, "Meta Description", 50, 160)</div>
+                    }
+                    <small class="text-muted">Characters: @GetCharCount(createBlogDto.MetaDescription)/160</small>
+                </div>
+
+                <!-- Categories -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Categories</label>
+                    <select class="form-select rounded-3" multiple @onchange="OnCategoryChange">
+                        @foreach (var category in categories)
+                        {
+                            <option value="@category.Id" selected="@createBlogDto.CategoryIds.Contains(category.Id)">
+                                @category.Name
+                            </option>
+                        }
+                    </select>
+                    <small class="text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple categories.</small>
+                    @if (submitted && !createBlogDto.CategoryIds.Any())
+                    {
+                        <div class="text-danger small mt-1">At least one category must be selected.</div>
+                    }
+                </div>
+
+                <!-- Publish -->
+                <div class="form-check form-switch mb-3">
+                    <InputCheckbox class="form-check-input" @bind-Value="createBlogDto.IsPublished" />
+                    <label class="form-check-label">Publish immediately</label>
+                </div>
+
+                <!-- Bottom Buttons -->
+                <div class="d-flex gap-3">
+                    <button type="submit" class="btn btn-primary px-4 py-2 rounded-3 fw-semibold">
+                        <i class="bi bi-upload me-2"></i> Create Blog
+                    </button>
+
+                    <button type="button" class="btn btn-outline-danger px-4 py-2 rounded-3 fw-semibold" @onclick="DiscardBlog">
+                        <i class="bi bi-x-circle me-2"></i> Discard
+                    </button>
+                </div>
+            </div>
+        }
+    </EditForm>
+</div>
+
+@code {
+    private CreateBlogDto createBlogDto = new();
+    private List<CategoryDto> categories = new();
+    private bool loadingCategories = true;
+    private string? CurrentUserId;
+    private bool submitted = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUser();
+        await LoadCategories();
+    }
+
+    private async Task LoadUser()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            CurrentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        }
+    }
+
+    private async Task LoadCategories()
+    {
+        loadingCategories = true;
+        categories = (await CategoryService.GetAllCategoriesAsync()).ToList();
+        loadingCategories = false;
+    }
+
+    private void OnCategoryChange(ChangeEventArgs e)
+    {
+        createBlogDto.CategoryIds.Clear();
+        if (e.Value is not null)
+        {
+            var selected = e.Value as IEnumerable<string> ?? Array.Empty<string>();
+            foreach (var val in selected)
+            {
+                if (int.TryParse(val, out int id))
+                    createBlogDto.CategoryIds.Add(id);
+            }
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        submitted = true;
+
+        if (string.IsNullOrEmpty(CurrentUserId)) return;
+        if (!IsFormValid()) return;
+
+        var result = await BlogService.CreateBlogAsync(createBlogDto, CurrentUserId);
+        if (result != null)
+            NavManager.NavigateTo("/blogs");
+    }
+
+    private async Task DiscardBlog()
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "Are you sure you want to discard all changes?"))
+            createBlogDto = new CreateBlogDto();
+    }
+
+    private void BackToBlogs()
+    {
+        NavManager.NavigateTo("/blogs");
+    }
+
+    private void UpdateCharCount(ChangeEventArgs e) => StateHasChanged();
+
+    // Validation helpers
+    private string GetInputClass(string? value, int min, int max)
+    {
+        if (!submitted) return "form-control rounded-3";
+
+        return string.IsNullOrEmpty(value) || (value.Length >= min && value.Length <= max)
+            ? "form-control rounded-3"
+            : "form-control rounded-3 border border-danger";
+    }
+
+    private string GetFieldError(string? value, string fieldName, int min, int max)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return $"{fieldName} is required (min {min} characters).";
+
+        if (value.Length < min)
+            return $"{fieldName} must be at least {min} characters.";
+
+        if (value.Length > max)
+            return $"{fieldName} cannot exceed {max} characters.";
+
+        return string.Empty;
+    }
+
+    private int GetCharCount(string? value) => string.IsNullOrEmpty(value) ? 0 : value.Length;
+
+    private bool IsFormValid()
+    {
+        return string.IsNullOrWhiteSpace(GetFieldError(createBlogDto.Title, "Title", 5, 100)) &&
+               string.IsNullOrWhiteSpace(GetFieldError(createBlogDto.Summary, "Summary", 20, 250)) &&
+               string.IsNullOrWhiteSpace(GetFieldError(createBlogDto.Content, "Content", 50, 5000)) &&
+               string.IsNullOrWhiteSpace(GetFieldError(createBlogDto.MetaDescription, "Meta Description", 50, 160)) &&
+               createBlogDto.CategoryIds.Any();
+    }
+}

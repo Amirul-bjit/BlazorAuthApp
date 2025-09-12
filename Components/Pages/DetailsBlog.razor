@@ -1,0 +1,125 @@
+﻿@page "/blogs/details/{BlogId:int}"
+@using BlazorAuthApp.DTOs
+@using BlazorAuthApp.Interfaces
+@using System.Security.Claims
+@inject IBlogService BlogService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Blog Details</PageTitle>
+
+<div class="container my-4">
+    <button class="btn btn-secondary mb-4 px-4 py-2 rounded-3" @onclick="BackToBlogs">
+        <i class="bi bi-arrow-left-circle me-2"></i> Back to All Blogs
+    </button>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (blog == null)
+    {
+        <p class="text-center text-muted">Blog not found.</p>
+    }
+    else
+    {
+        <div class="card shadow-sm border-0 rounded-4">
+            @if (!string.IsNullOrEmpty(blog.FeaturedImageUrl))
+            {
+                <img src="@blog.FeaturedImageUrl" class="card-img-top rounded-top-4" alt="@blog.Title" />
+            }
+
+            <div class="card-body">
+                <h1 class="card-title fw-bold mb-3">@blog.Title</h1>
+                <h5 class="text-muted mb-3">@blog.Summary</h5>
+
+                <div class="mb-3">
+                    <strong>Categories:</strong>
+                    @if (blog.Categories != null && blog.Categories.Any())
+                    {
+                        @foreach (var category in blog.Categories)
+                        {
+                            <span class="badge bg-primary text-white me-2">@category.Name</span>
+                        }
+                    }
+                </div>
+
+                <div class="mb-4">
+                    <strong>Content:</strong>
+                    <div class="border rounded-3 p-3 bg-light" style="white-space: pre-wrap;">
+                        @blog.Content
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <strong>Meta Description:</strong>
+                    <p class="text-muted">@blog.MetaDescription</p>
+                </div>
+
+                <div class="d-flex gap-3 flex-wrap mb-3">
+                    <span class="badge bg-light text-dark">
+                        <i class="bi bi-person"></i> @blog.AuthorName
+                    </span>
+                    <span class="badge bg-primary text-white">
+                        <i class="bi bi-clock"></i> @blog.EstimatedReadTime min read
+                    </span>
+                    <span class="badge @(blog.IsPublished ? "bg-success" : "bg-secondary") text-white">
+                        @(blog.IsPublished ? "Published" : "Draft")
+                    </span>
+                </div>
+
+                 <div class="d-flex gap-3 flex-wrap">
+                    <small class="text-muted">
+                        <i class="bi bi-eye"></i> @blog.ViewCount views
+                    </small> 
+                    @*<small class="text-muted">
+                        <i class="bi bi-hand-thumbs-up"></i> @blog.LikeCount likes
+                    </small>*@
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int BlogId { get; set; }
+    private BlogDto? blog;
+    private bool loading = true;
+    private string? CurrentUserId;
+
+    private async Task LoadUser()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            CurrentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        blog = await BlogService.GetBlogByIdAsync(BlogId);
+        loading = false;
+        await LoadUser();
+        if(blog.AuthorId != CurrentUserId)
+        {
+            var response = await BlogService.IncrementViewCountAsync(BlogId);
+            if(response)
+            {
+                blog.ViewCount += 1;
+            }
+        }
+    }
+
+    private void BackToBlogs()
+    {
+        Navigation.NavigateTo("/blogs");
+    }
+}

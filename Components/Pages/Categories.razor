@@ -1,0 +1,178 @@
+﻿@page "/categories"
+@using BlazorAuthApp.DTOs
+@using BlazorAuthApp.Interfaces
+@inject ICategoryService CategoryService
+@inject IJSRuntime JSRuntime
+
+<h3>Categories</h3>
+
+<button class="btn btn-primary mb-3" @onclick="ShowCreateModal">Create Category</button>
+
+@if (loading)
+{
+    <div>Loading...</div>
+}
+else
+{
+    <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Is Active</th>
+                <th style="width:150px">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var category in categories)
+            {
+                <tr>
+                    <td>@category.Name</td>
+                    <td>@category.Description</td>
+                    <td>
+                        @if (category.IsActive)
+                        {
+                            <span class="badge bg-success">Active</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-danger">Inactive</span>
+                        }
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-link" @onclick="() => ShowUpdateModal(category)">Edit</button>
+                        <button class="btn btn-sm btn-link text-danger" @onclick="() => DeleteCategory(category.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<!-- Create Modal -->
+<div class="modal fade @(isCreateModalVisible ? "show d-block" : "")" tabindex="-1" style="background-color:rgba(0,0,0,0.5);">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create Category</h5>
+                <button type="button" class="btn-close" @onclick="CloseCreateModal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" @bind="createDto.Name" placeholder="Enter category name" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <input class="form-control" @bind="createDto.Description" placeholder="Enter description" />
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="createDto.IsActive" />
+                    <label class="form-check-label">Is Active</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseCreateModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="CreateCategoryAsync">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Update Modal -->
+<div class="modal fade @(isUpdateModalVisible ? "show d-block" : "")" tabindex="-1" style="background-color:rgba(0,0,0,0.5);">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Update Category</h5>
+                <button type="button" class="btn-close" @onclick="CloseUpdateModal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" @bind="updateDto.Name" placeholder="Enter category name" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <input class="form-control" @bind="updateDto.Description" placeholder="Enter description" />
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="updateDto.IsActive" />
+                    <label class="form-check-label">Is Active</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseUpdateModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="UpdateCategoryAsync">Update</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<CategoryDto> categories = new();
+    private bool loading = true;
+
+    private bool isCreateModalVisible = false;
+    private bool isUpdateModalVisible = false;
+
+    private CreateCategoryDto createDto = new();
+    private UpdateCategoryDto updateDto = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        loading = true;
+        categories = (await CategoryService.GetAllCategoriesAsync()).ToList();
+        loading = false;
+    }
+
+    private void ShowCreateModal()
+    {
+        createDto = new CreateCategoryDto();
+        isCreateModalVisible = true;
+    }
+
+    private void CloseCreateModal() => isCreateModalVisible = false;
+
+    private async Task CreateCategoryAsync()
+    {
+        await CategoryService.CreateCategoryAsync(createDto);
+        isCreateModalVisible = false;
+        await LoadCategories();
+    }
+
+    private void ShowUpdateModal(CategoryDto category)
+    {
+        updateDto = new UpdateCategoryDto
+        {
+            Id = category.Id,
+            Name = category.Name,
+            Description = category.Description,
+            IsActive = category.IsActive
+        };
+        isUpdateModalVisible = true;
+    }
+
+    private void CloseUpdateModal() => isUpdateModalVisible = false;
+
+    private async Task UpdateCategoryAsync()
+    {
+        await CategoryService.UpdateCategoryAsync(updateDto);
+        isUpdateModalVisible = false;
+        await LoadCategories();
+    }
+
+    private async Task DeleteCategory(int id)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure to delete this category?"))
+        {
+            await CategoryService.DeleteCategoryAsync(id);
+            await LoadCategories();
+        }
+    }
+}
