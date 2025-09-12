@@ -1,11 +1,17 @@
 ﻿using BlazorAuthApp.DTOs;
+using BlazorAuthApp.Shared;
 
 namespace BlazorAuthApp.Interfaces
 {
     public interface IBlogService
     {
         // Get methods
-        Task<IEnumerable<BlogListDto>> GetAllBlogsAsync(string? currentUserId = null, bool includeUnpublished = false);
+        Task<IEnumerable<BlogListDto>> GetAllBlogsAsync(
+            string? currentUserId = null,
+            bool includeUnpublished = false,
+            List<int>? categoryIds = null,
+            BlogSortBy sortBy = BlogSortBy.Latest
+        );
         Task<IEnumerable<BlogListDto>> GetBlogsByAuthorAsync(string authorId, string? currentUserId = null);
         Task<BlogDto?> GetBlogByIdAsync(int id, string? currentUserId = null);
         Task<BlogDto?> GetBlogBySlugAsync(string slug, string? currentUserId = null);

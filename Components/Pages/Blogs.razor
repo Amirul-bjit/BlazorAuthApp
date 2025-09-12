@@ -2,8 +2,11 @@
 @using BlazorAuthApp.DTOs
 @using BlazorAuthApp.Interfaces
 @using System.Security.Claims
+@using BlazorAuthApp.Services
+@using BlazorAuthApp.Shared
 @using Microsoft.AspNetCore.Authorization
 @inject IBlogService BlogService
+@inject ICategoryService CategoryService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
@@ -39,6 +42,7 @@
         </div>
     </div>
 
+    
     <!-- Loading State -->
     @if (blogs == null)
     {
@@ -50,7 +54,7 @@
             <p class="text-muted">We're fetching the latest blogs for you</p>
         </div>
     }
-    else if (!blogs.Any())
+    @* else if (!blogs.Any())
     {
         <!-- Empty State -->
         <div class="text-center py-5">
@@ -63,45 +67,173 @@
                 </button>
             </div>
         </div>
-    }
+    } *@
     else
     {
         <!-- Filter and Sort Controls -->
-         <div class="row mb-4">
+        <div class="row mb-4">
             <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 p-3 bg-light rounded-3">
-                    @*<div class="d-flex gap-3 flex-wrap">
-                        <div class="dropdown">
-                            <button class="btn btn-outline-secondary dropdown-toggle rounded-pill" type="button" data-bs-toggle="dropdown">
-                                <i class="bi bi-funnel me-2"></i>Filter by Category
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="#">All Categories</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="#">Technology</a></li>
-                                <li><a class="dropdown-item" href="#">Lifestyle</a></li>
-                                <li><a class="dropdown-item" href="#">Business</a></li>
-                            </ul>
+                <div class="bg-light rounded-3 p-4 shadow-sm">
+                    <div class="row align-items-center">
+                        <!-- Filter Controls -->
+                        <div class="col-md-8">
+                            <div class="d-flex gap-3 flex-wrap">
+                                <!-- Category Multi-Select Filter -->
+                                <div class="dropdown">
+                                    <button class="btn btn-outline-secondary dropdown-toggle rounded-pill position-relative"
+                                            type="button"
+                                            id="categoryFilter"
+                                            data-bs-toggle="dropdown"
+                                            aria-expanded="false">
+                                        <i class="bi bi-funnel me-2"></i>Filter by Category
+                                        @if (selectedCategoryIds.Any())
+                                        {
+                                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
+                                                @selectedCategoryIds.Count
+                                            </span>
+                                        }
+                                    </button>
+                                    <div class="dropdown-menu p-3" style="min-width: 280px;">
+                                        <h6 class="dropdown-header">Select Categories</h6>
+
+                                        @if (categories != null)
+                                        {
+                                            <!-- Select All / Clear All -->
+                                            <div class="d-flex gap-2 mb-2 pb-2 border-bottom">
+                                                <button type="button" class="btn btn-sm btn-outline-primary flex-fill" @onclick="SelectAllCategories">
+                                                    Select All
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary flex-fill" @onclick="ClearAllCategories">
+                                                    Clear All
+                                                </button>
+                                            </div>
+
+                                            <!-- Category Checkboxes -->
+                                            @foreach (var category in categories)
+                                            {
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input"
+                                                           type="checkbox"
+                                                           id="category-@category.Id"
+                                                           checked="@selectedCategoryIds.Contains(category.Id)"
+                                                           @onchange="@((args) => OnCategoryToggle(category.Id, (bool)args.Value!))" />
+                                                    <label class="form-check-label" for="category-@category.Id">
+                                                        @category.Name
+                                                        @if (!string.IsNullOrEmpty(category.Description))
+                                                        {
+                                                            <small class="text-muted d-block">@category.Description</small>
+                                                        }
+                                                    </label>
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <div class="text-center p-3">
+                                                <div class="spinner-border spinner-border-sm me-2"></div>
+                                                Loading categories...
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+
+                                <!-- Sort By Dropdown -->
+                                <div class="dropdown">
+                                    <button class="btn btn-outline-secondary dropdown-toggle rounded-pill"
+                                            type="button"
+                                            id="sortFilter"
+                                            data-bs-toggle="dropdown"
+                                            aria-expanded="false">
+                                        <i class="bi bi-sort-down me-2"></i>@GetSortDisplayText()
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li>
+                                            <button class="dropdown-item @(selectedSortBy == BlogSortBy.Latest ? "active" : "")"
+                                                    type="button"
+                                                    @onclick="() => OnSortChange(BlogSortBy.Latest)">
+                                                <i class="bi bi-calendar-event me-2"></i>Latest First
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item @(selectedSortBy == BlogSortBy.MostLiked ? "active" : "")"
+                                                    type="button"
+                                                    @onclick="() => OnSortChange(BlogSortBy.MostLiked)">
+                                                <i class="bi bi-heart me-2"></i>Most Liked
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item @(selectedSortBy == BlogSortBy.MostViewed ? "active" : "")"
+                                                    type="button"
+                                                    @onclick="() => OnSortChange(BlogSortBy.MostViewed)">
+                                                <i class="bi bi-eye me-2"></i>Most Viewed
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item @(selectedSortBy == BlogSortBy.MostDiscussed ? "active" : "")"
+                                                    type="button"
+                                                    @onclick="() => OnSortChange(BlogSortBy.MostDiscussed)">
+                                                <i class="bi bi-chat me-2"></i>Most Discussed
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <!-- Clear All Filters -->
+                                @if (selectedCategoryIds.Any())
+                                {
+                                    <button class="btn btn-outline-danger rounded-pill"
+                                            type="button"
+                                            @onclick="ClearAllFilters">
+                                        <i class="bi bi-x-circle me-2"></i>Clear Filters
+                                    </button>
+                                }
+                            </div>
                         </div>
-                        <div class="dropdown">
-                            <button class="btn btn-outline-secondary dropdown-toggle rounded-pill" type="button" data-bs-toggle="dropdown">
-                                <i class="bi bi-sort-down me-2"></i>Sort by
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item active" href="#"><i class="bi bi-calendar-event me-2"></i>Latest First</a></li>
-                                <li><a class="dropdown-item" href="#"><i class="bi bi-heart me-2"></i>Most Liked</a></li>
-                                <li><a class="dropdown-item" href="#"><i class="bi bi-eye me-2"></i>Most Viewed</a></li>
-                                <li><a class="dropdown-item" href="#"><i class="bi bi-chat me-2"></i>Most Discussed</a></li>
-                            </ul>
+
+                        <!-- Results Count -->
+                        <div class="col-md-4">
+                            <div class="text-end text-muted">
+                                <i class="bi bi-collection me-1"></i>
+                                Showing @blogs.Count() of @totalBlogsCount articles
+                                @if (selectedCategoryIds.Any())
+                                {
+                                    <div class="small">
+                                        Filtered by @selectedCategoryIds.Count category@(selectedCategoryIds.Count > 1 ? "ies" : "")
+                                    </div>
+                                }
+                            </div>
                         </div>
-                    </div> *@
-                    <div class="text-muted">
-                        <i class="bi bi-collection me-1"></i>
-                        Showing @blogs.Count() articles
                     </div>
+
+                    <!-- Active Filter Tags -->
+                    @if (selectedCategoryIds.Any())
+                    {
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <small class="text-muted fw-semibold me-2">Active filters:</small>
+                                @foreach (var categoryId in selectedCategoryIds)
+                                {
+                                    var category = categories?.FirstOrDefault(c => c.Id == categoryId);
+                                    if (category != null)
+                                    {
+                                        <span class="badge bg-primary rounded-pill d-flex align-items-center gap-1">
+                                            @category.Name
+                                            <button type="button"
+                                                    class="btn-close btn-close-white"
+                                                    style="font-size: 0.6em;"
+                                                    @onclick="() => OnCategoryToggle(categoryId, false)"
+                                                    aria-label="Remove filter"></button>
+                                        </span>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+
                 </div>
             </div>
         </div>
+
 
         <!-- Blog Grid -->
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
@@ -311,13 +443,30 @@
 </div>
 
 @code {
+    // Existing properties
     private IEnumerable<BlogListDto>? blogs;
     private string? CurrentUserId;
+
+    // New filter and sort properties
+    private IEnumerable<CategoryDto>? categories;
+    private List<int> selectedCategoryIds = new();
+    private BlogSortBy selectedSortBy = BlogSortBy.Latest;
+    private int totalBlogsCount = 0;
+
+    // Enum for sorting (add this to your DTOs or create a shared enum file)
+    // public enum BlogSortBy
+    // {
+    //     Latest,
+    //     MostLiked,
+    //     MostViewed,
+    //     MostDiscussed
+    // }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadUser();
-        blogs = await BlogService.GetAllBlogsAsync(CurrentUserId);
+        await LoadCategories();
+        await LoadBlogs();
     }
 
     private async Task LoadUser()
@@ -336,6 +485,112 @@
         }
     }
 
+    private async Task LoadCategories()
+    {
+        try
+        {
+            // You'll need to add this method to your IBlogService
+            categories = await CategoryService.GetAllCategoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading categories: {ex.Message}");
+            categories = new List<CategoryDto>();
+        }
+    }
+
+    private async Task LoadBlogs()
+    {
+        try
+        {
+            blogs = await BlogService.GetAllBlogsAsync(
+                CurrentUserId,
+                false, // includeUnpublished
+                selectedCategoryIds.Any() ? selectedCategoryIds : null,
+                selectedSortBy);
+
+            // Get total count for display
+            if (selectedCategoryIds.Any())
+            {
+                var allBlogs = await BlogService.GetAllBlogsAsync(CurrentUserId, false, null, selectedSortBy);
+                totalBlogsCount = allBlogs.Count();
+            }
+            else
+            {
+                totalBlogsCount = blogs.Count();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading blogs: {ex.Message}");
+            blogs = new List<BlogListDto>();
+        }
+    }
+
+    // Filter and Sort Event Handlers
+    private async Task OnCategoryToggle(int categoryId, bool isSelected)
+    {
+        if (isSelected)
+        {
+            if (!selectedCategoryIds.Contains(categoryId))
+            {
+                selectedCategoryIds.Add(categoryId);
+            }
+        }
+        else
+        {
+            selectedCategoryIds.Remove(categoryId);
+        }
+
+        await LoadBlogs();
+        StateHasChanged();
+    }
+
+    private async Task OnSortChange(BlogSortBy sortBy)
+    {
+        selectedSortBy = sortBy;
+        await LoadBlogs();
+        StateHasChanged();
+    }
+
+    private async Task SelectAllCategories()
+    {
+        if (categories != null)
+        {
+            selectedCategoryIds = categories.Select(c => c.Id).ToList();
+            await LoadBlogs();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ClearAllCategories()
+    {
+        selectedCategoryIds.Clear();
+        await LoadBlogs();
+        StateHasChanged();
+    }
+
+    private async Task ClearAllFilters()
+    {
+        selectedCategoryIds.Clear();
+        selectedSortBy = BlogSortBy.Latest;
+        await LoadBlogs();
+        StateHasChanged();
+    }
+
+    private string GetSortDisplayText()
+    {
+        return selectedSortBy switch
+        {
+            BlogSortBy.Latest => "Latest First",
+            BlogSortBy.MostLiked => "Most Liked",
+            BlogSortBy.MostViewed => "Most Viewed",
+            BlogSortBy.MostDiscussed => "Most Discussed",
+            _ => "Latest First"
+        };
+    }
+
+    // Existing methods
     private void RedirectToCreateBlog()
     {
         Navigation.NavigateTo("/blogs/create");
@@ -360,8 +615,7 @@
             try
             {
                 await BlogService.DeleteBlogAsync(blogId, CurrentUserId);
-                // Refresh the blogs list after deletion
-                blogs = await BlogService.GetAllBlogsAsync(CurrentUserId);
+                await LoadBlogs(); // Reload with current filters
                 StateHasChanged();
             }
             catch (Exception)
@@ -439,4 +693,28 @@
         background-color: #c82333 !important;
         border-color: #c82333 !important;
     }
+
+    .dropdown-menu {
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        border: 0;
+        border-radius: 0.5rem;
+    }
+
+    .form-check-input:checked {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+
+    .dropdown-item.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+
+    .badge .btn-close {
+        --bs-btn-close-opacity: 0.8;
+    }
+
+        .badge .btn-close:hover {
+            --bs-btn-close-opacity: 1;
+        }
 </style>

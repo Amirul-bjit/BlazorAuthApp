@@ -354,8 +354,9 @@
     private string? CurrentUserId;
     private string newCommentContent = string.Empty;
     private bool showLikersModal = false;
+    private bool initialized = false;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
         loading = true;
 
@@ -365,12 +366,10 @@
         if (!user.Identity?.IsAuthenticated ?? true)
         {
             Navigation.NavigateTo("/", true);
+            return;
         }
 
-        if (user.Identity?.IsAuthenticated == true)
-        {
-            CurrentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        }
+        CurrentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         blog = await BlogService.GetBlogByIdAsync(BlogId, CurrentUserId);
 
@@ -387,6 +386,7 @@
 
         loading = false;
     }
+
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
