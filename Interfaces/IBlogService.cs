@@ -22,7 +22,6 @@ namespace BlazorAuthApp.Interfaces
 
         // Engagement
         Task<bool> IncrementViewCountAsync(int id);
-        Task<bool> ToggleLikeAsync(int id, string userId);
 
         // Validation and utility
         Task<bool> BlogExistsAsync(int id);
@@ -34,5 +33,12 @@ namespace BlazorAuthApp.Interfaces
         Task<IEnumerable<BlogListDto>> GetBlogsByCategoryAsync(int categoryId, string? currentUserId = null);
         Task<IEnumerable<BlogListDto>> GetRecentBlogsAsync(int count = 10, string? currentUserId = null);
         Task<IEnumerable<BlogListDto>> GetPopularBlogsAsync(int count = 10, string? currentUserId = null);
+
+        Task<bool> ToggleLikeAsync(int blogId, string userId);
+        Task<bool> IsLikedByUserAsync(int blogId, string userId);
+        Task<IEnumerable<BlogLikeDto>> GetBlogLikesAsync(int blogId, string requesterId);
+        Task<BlogCommentDto?> AddCommentAsync(int blogId, string content, string userId);
+        Task<IEnumerable<BlogCommentDto>> GetBlogCommentsAsync(int blogId, string? currentUserId = null);
+        Task<IEnumerable<BlogCommentDto>> GetBlogCommentsForAuthorAsync(int blogId, string requesterId);
     }
 }

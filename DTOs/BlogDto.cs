@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using System.ComponentModel.DataAnnotations;
 
 namespace BlazorAuthApp.DTOs
 {
@@ -24,6 +25,13 @@ namespace BlazorAuthApp.DTOs
         public int LikeCount { get; set; }
         public int EstimatedReadTime { get; set; }
         public bool IsOwner { get; set; } = false;
+        public int CommentCount { get; set; }
+        public bool IsLikedByCurrentUser { get; set; } = false;
+        public DateTime CreatedAtLoal => CreatedAt.ToLocalTime();
+        public DateTime? UpdatedAtLocal => UpdatedAt?.ToLocalTime();
+        public DateTime? PublishedAtLocal => PublishedAt?.ToLocalTime();
+        public List<BlogCommentDto> Comments { get; set; } = new(); // Only visible to author
+        public List<BlogLikeDto> Likes { get; set; } = new(); // Only visible to author
     }
 
     public class CreateBlogDto
@@ -98,5 +106,9 @@ namespace BlazorAuthApp.DTOs
         public int EstimatedReadTime { get; set; }
         public bool IsOwner { get; set; } = false;
         public string? Slug { get; set; }
+        public int CommentCount { get; set; }
+        public bool IsLikedByCurrentUser { get; set; } = false;
+        public DateTime CreatedAtLoal => CreatedAt.ToLocalTime();
+        public DateTime? PublishedAtLocal => PublishedAt?.ToLocalTime();
     }
 }

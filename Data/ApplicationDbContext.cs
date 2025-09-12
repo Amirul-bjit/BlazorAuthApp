@@ -9,6 +9,8 @@ namespace BlazorAuthApp.Data
     {
         public DbSet<Category> Categories { get; set; }
         public DbSet<Blog> Blogs { get; set; }
+        public DbSet<BlogLike> BlogLikes { get; set; }
+        public DbSet<BlogComment> BlogComments { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -104,7 +106,77 @@ namespace BlazorAuthApp.Data
                     .HasDefaultValue(0);
                 entity.Property(e => e.EstimatedReadTime)
                     .HasDefaultValue(1);
+
+                // Navigation properties for likes and comments
+                entity.HasMany(b => b.Likes)
+                    .WithOne(bl => bl.Blog)
+                    .HasForeignKey(bl => bl.BlogId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(b => b.Comments)
+                    .WithOne(bc => bc.Blog)
+                    .HasForeignKey(bc => bc.BlogId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
+
+            // BlogLike entity configuration
+            modelBuilder.Entity<BlogLike>(entity =>
+            {
+                entity.HasKey(bl => bl.Id);
+
+                // Foreign key to Blog
+                entity.HasOne(bl => bl.Blog)
+                    .WithMany(b => b.Likes)
+                    .HasForeignKey(bl => bl.BlogId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Foreign key to User
+                entity.HasOne(bl => bl.User)
+                    .WithMany()
+                    .HasForeignKey(bl => bl.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Composite unique index to prevent duplicate likes
+                entity.HasIndex(bl => new { bl.BlogId, bl.UserId })
+                    .IsUnique()
+                    .HasDatabaseName("IX_BlogLikes_BlogId_UserId");
+
+                // Index for performance
+                entity.HasIndex(bl => bl.BlogId)
+                    .HasDatabaseName("IX_BlogLikes_BlogId");
+            });
+
+            // BlogComment entity configuration
+            modelBuilder.Entity<BlogComment>(entity =>
+            {
+                entity.HasKey(bc => bc.Id);
+
+                // Foreign key to Blog
+                entity.HasOne(bc => bc.Blog)
+                    .WithMany(b => b.Comments)
+                    .HasForeignKey(bc => bc.BlogId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Foreign key to User
+                entity.HasOne(bc => bc.User)
+                    .WithMany()
+                    .HasForeignKey(bc => bc.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Indexes for performance
+                entity.HasIndex(bc => bc.BlogId)
+                    .HasDatabaseName("IX_BlogComments_BlogId");
+
+                entity.HasIndex(bc => bc.UserId)
+                    .HasDatabaseName("IX_BlogComments_UserId");
+
+                entity.HasIndex(bc => bc.IsDeleted)
+                    .HasDatabaseName("IX_BlogComments_IsDeleted");
+
+                entity.HasIndex(bc => new { bc.BlogId, bc.IsDeleted })
+                    .HasDatabaseName("IX_BlogComments_BlogId_IsDeleted");
+            });
+
         }
     }
 }
