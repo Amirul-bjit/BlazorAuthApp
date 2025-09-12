@@ -10,10 +10,14 @@ namespace BlazorAuthApp.Services
     public class BlogService : IBlogService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IBlogLikeService _blogLikeService;
+        private readonly IBlogCommentService _blogCommentService;
 
-        public BlogService(ApplicationDbContext context)
+        public BlogService(ApplicationDbContext context, IBlogLikeService blogLikeService, IBlogCommentService blogCommentService)
         {
             _context = context;
+            _blogLikeService = blogLikeService;
+            _blogCommentService = blogCommentService;
         }
 
         public async Task<IEnumerable<BlogListDto>> GetAllBlogsAsync(string? currentUserId = null, bool includeUnpublished = false)
@@ -49,8 +53,10 @@ namespace BlazorAuthApp.Services
                     PublishedAt = b.PublishedAt,
                     ViewCount = b.ViewCount,
                     LikeCount = b.LikeCount,
+                    CommentCount = b.Comments.Count(c => !c.IsDeleted), // Add comment count
                     EstimatedReadTime = b.EstimatedReadTime,
                     IsOwner = currentUserId != null && b.AuthorId == currentUserId,
+                    IsLikedByCurrentUser = currentUserId != null && b.Likes.Any(l => l.UserId == currentUserId), // Add like status
                     Slug = b.Slug
                 })
                 .ToListAsync();
@@ -104,6 +110,10 @@ namespace BlazorAuthApp.Services
             var blog = await _context.Blogs
                 .Include(b => b.Author)
                 .Include(b => b.Categories)
+                .Include(b => b.Comments.Where(c => !c.IsDeleted))
+                    .ThenInclude(c => c.User)
+                .Include(b => b.Likes)
+                    .ThenInclude(l => l.User)
                 .FirstOrDefaultAsync(b => b.Id == id && !b.IsDeleted);
 
             if (blog == null) return null;
@@ -111,6 +121,8 @@ namespace BlazorAuthApp.Services
             // Check if user can access this blog
             if (!blog.IsPublished && blog.AuthorId != currentUserId)
                 return null;
+
+            var isOwner = currentUserId != null && blog.AuthorId == currentUserId;
 
             return new BlogDto
             {
@@ -138,8 +150,35 @@ namespace BlazorAuthApp.Services
                 Slug = blog.Slug,
                 ViewCount = blog.ViewCount,
                 LikeCount = blog.LikeCount,
+                CommentCount = blog.Comments.Count(c => !c.IsDeleted),
                 EstimatedReadTime = blog.EstimatedReadTime,
-                IsOwner = currentUserId != null && blog.AuthorId == currentUserId
+                IsOwner = isOwner,
+                IsLikedByCurrentUser = currentUserId != null && blog.Likes.Any(l => l.UserId == currentUserId),
+                Comments = isOwner ? blog.Comments.Where(c => !c.IsDeleted).Select(c => new BlogCommentDto
+                {
+                    Id = c.Id,
+                    BlogId = c.BlogId,
+                    BlogTitle = blog.Title,
+                    UserId = c.UserId,
+                    UserName = c.User.UserName ?? c.User.Email,
+                    UserEmail = c.User.Email,
+                    Content = c.Content,
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt,
+                    IsOwner = c.UserId == currentUserId,
+                    CanEdit = true // Author can manage all comments
+                }).OrderBy(c => c.CreatedAt).ToList() : new List<BlogCommentDto>(),
+
+                Likes = isOwner ? blog.Likes.Select(l => new BlogLikeDto
+                {
+                    Id = l.Id,
+                    BlogId = l.BlogId,
+                    BlogTitle = blog.Title,
+                    UserId = l.UserId,
+                    UserName = l.User.UserName ?? l.User.Email,
+                    UserEmail = l.User.Email,
+                    LikedAt = l.LikedAt
+                }).OrderByDescending(l => l.LikedAt).ToList() : new List<BlogLikeDto>()
             };
         }
 
@@ -340,19 +379,19 @@ namespace BlazorAuthApp.Services
             return true;
         }
 
-        public async Task<bool> ToggleLikeAsync(int id, string userId)
-        {
-            var blog = await _context.Blogs
-                .FirstOrDefaultAsync(b => b.Id == id && !b.IsDeleted && b.IsPublished);
+        //public async Task<bool> ToggleLikeAsync(int id, string userId)
+        //{
+        //    var blog = await _context.Blogs
+        //        .FirstOrDefaultAsync(b => b.Id == id && !b.IsDeleted && b.IsPublished);
 
-            if (blog == null) return false;
+        //    if (blog == null) return false;
 
-            // In a real application, you would track individual likes in a separate table
-            // For now, we'll just increment the count
-            blog.LikeCount = Math.Max(0, blog.LikeCount + 1);
-            await _context.SaveChangesAsync();
-            return true;
-        }
+        //    // In a real application, you would track individual likes in a separate table
+        //    // For now, we'll just increment the count
+        //    blog.LikeCount = Math.Max(0, blog.LikeCount + 1);
+        //    await _context.SaveChangesAsync();
+        //    return true;
+        //}
 
         public async Task<bool> BlogExistsAsync(int id)
         {
@@ -574,6 +613,44 @@ namespace BlazorAuthApp.Services
 
             var readTime = Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
             return readTime;
+        }
+
+        public async Task<bool> ToggleLikeAsync(int blogId, string userId)
+        {
+            return await _blogLikeService.ToggleLikeAsync(blogId, userId);
+        }
+
+        public async Task<bool> IsLikedByUserAsync(int blogId, string userId)
+        {
+            return await _blogLikeService.IsLikedByUserAsync(blogId, userId);
+        }
+
+        public async Task<IEnumerable<BlogLikeDto>> GetBlogLikesAsync(int blogId, string requesterId)
+        {
+            return await _blogLikeService.GetBlogLikesAsync(blogId, requesterId);
+        }
+
+        public async Task<BlogCommentDto?> AddCommentAsync(int blogId, string content, string userId)
+        {
+            var createCommentDto = new CreateCommentDto
+            {
+                BlogId = blogId,
+                Content = content
+            };
+            return await _blogCommentService.CreateCommentAsync(createCommentDto, userId);
+        }
+
+        public async Task<IEnumerable<BlogCommentDto>> GetBlogCommentsAsync(int blogId, string? currentUserId = null)
+        {
+            return await _blogCommentService.GetBlogCommentsAsync(blogId, currentUserId);
+        }
+
+        public async Task<IEnumerable<BlogCommentDto>> GetBlogCommentsForAuthorAsync(int blogId, string requesterId)
+        {
+            var blog = await _context.Blogs.FirstOrDefaultAsync(b => b.Id == blogId && !b.IsDeleted);
+            if (blog == null) return Enumerable.Empty<BlogCommentDto>();
+
+            return await _blogCommentService.GetBlogCommentsForAuthorAsync(blogId, blog.AuthorId, requesterId);
         }
     }
 }

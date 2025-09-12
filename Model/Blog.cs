@@ -60,5 +60,8 @@ namespace BlazorAuthApp.Model
 
         // Reading time in minutes (calculated)
         public int EstimatedReadTime { get; set; } = 1;
+
+        public ICollection<BlogLike> Likes { get; set; } = new List<BlogLike>();
+        public ICollection<BlogComment> Comments { get; set; } = new List<BlogComment>();
     }
 }
