@@ -3,10 +3,12 @@
 @using BlazorAuthApp.Model
 @using BlazorAuthApp.Interfaces
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
 @inject IBlogService BlogService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@attribute [Authorize]
 
 <PageTitle>@(blog?.Title ?? "Blog Details")</PageTitle>
 
@@ -87,7 +89,6 @@
                                 </span>
                             }
                         </small>
-
                     </div>
                     <div class="text-end">
                         <div class="badge bg-primary text-white px-3 py-2 rounded-pill">
@@ -139,11 +140,21 @@
                         </small>
                     </div>
                     <div class="text-center">
-                        <div class="fw-bold fs-5 text-danger">@blog.LikeCount</div>
+                        @if (blog.IsOwner)
+                        {
+                            <div class="fw-bold fs-5 text-danger text-decoration-none" style="cursor:pointer;" @onclick="ShowLikers">
+                                @blog.LikeCount
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="fw-bold fs-5 text-danger">@blog.LikeCount</div>
+                        }
                         <small class="text-muted">
-                            <i class="bi bi-heart me-1"></i>Likes
+                            <i class="bi bi-heart me-1"></i> Likes
                         </small>
                     </div>
+
                     <div class="text-center">
                         <div class="fw-bold fs-5 text-success">@blog.CommentCount</div>
                         <small class="text-muted">
@@ -193,46 +204,39 @@
                 </h4>
             </div>
             <div class="card-body p-4">
-
-                <!-- Add Comment Form (if user is logged in) -->
                 @if (!string.IsNullOrEmpty(CurrentUserId))
                 {
                     <div class="mb-4 p-4 bg-light rounded-3">
                         <h6 class="fw-bold mb-3">Add a comment</h6>
-                        <div class="mb-3">
-                            <textarea class="form-control border-0 shadow-sm rounded-3"
-                                      rows="4"
-                                      @bind="newCommentContent"
-                                      placeholder="Share your thoughts about this blog..."
-                                      maxlength="1000"></textarea>
-                            <div class="form-text text-end mt-2">
-                                @(newCommentContent?.Length ?? 0)/1000 characters
-                            </div>
-                        </div>
+                        <textarea class="form-control border-0 shadow-sm rounded-3 mb-2"
+                                  rows="4"
+                                  @bind="newCommentContent"
+                                  placeholder="Share your thoughts..."
+                                  maxlength="1000"></textarea>
                         <div class="d-flex justify-content-between align-items-center">
                             <small class="text-muted">
                                 <i class="bi bi-info-circle me-1"></i>
-                                Be respectful and constructive in your comments.
+                                Be respectful and constructive.
                             </small>
                             <button class="btn btn-primary px-4 py-2 rounded-pill shadow-sm"
                                     @onclick="AddComment"
                                     disabled="@(commentingInProgress || string.IsNullOrWhiteSpace(newCommentContent))">
                                 @if (commentingInProgress)
                                 {
-                                    <span class="d-flex align-items-center">
+                                    <span>
                                         <div class="spinner-border spinner-border-sm me-2" role="status"></div>
                                         Posting...
                                     </span>
                                 }
                                 else
                                 {
-                                    <span class="d-flex align-items-center">
+                                    <span>
                                         <i class="bi bi-send me-2"></i>
                                         Post Comment
                                     </span>
                                 }
-
                             </button>
+
                         </div>
                     </div>
                 }
@@ -264,51 +268,8 @@
                                                     }
                                                 </small>
                                             </div>
-                                            @if (comment.IsOwner || blog.IsOwner)
-                                            {
-                                                <div class="dropdown">
-                                                    <button class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown">
-                                                        <i class="bi bi-three-dots"></i>
-                                                    </button>
-                                                    <ul class="dropdown-menu">
-                                                        @if (comment.IsOwner)
-                                                        {
-                                                            <li>
-                                                                <button class="dropdown-item" @onclick="() => StartEditComment(comment)">
-                                                                    <i class="bi bi-pencil me-2"></i>Edit
-                                                                </button>
-                                                            </li>
-                                                        }
-                                                        <li>
-                                                            <button class="dropdown-item text-danger" @onclick="() => DeleteComment(comment.Id)">
-                                                                <i class="bi bi-trash me-2"></i>Delete
-                                                            </button>
-                                                        </li>
-                                                    </ul>
-                                                </div>
-                                            }
                                         </div>
-
-                                        @if (editingCommentId == comment.Id)
-                                        {
-                                            <div class="mt-2">
-                                                <textarea class="form-control mb-2" rows="3" @bind="editCommentContent" maxlength="1000"></textarea>
-                                                <div class="d-flex gap-2">
-                                                    <button class="btn btn-sm btn-primary" @onclick="SaveEditComment" disabled="@commentingInProgress">
-                                                        @if (commentingInProgress)
-                                                        {
-                                                            <div class="spinner-border spinner-border-sm me-1" role="status"></div>
-                                                        }
-                                                        Save
-                                                    </button>
-                                                    <button class="btn btn-sm btn-secondary" @onclick="CancelEditComment">Cancel</button>
-                                                </div>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <p class="mb-0" style="white-space: pre-wrap;">@comment.Content</p>
-                                        }
+                                        <p class="mb-0" style="white-space: pre-wrap;">@comment.Content</p>
                                     </div>
                                 </div>
                             </div>
@@ -320,11 +281,65 @@
                     <div class="text-center py-5 text-muted">
                         <i class="bi bi-chat-square-text" style="font-size: 3rem; opacity: 0.5;"></i>
                         <h5 class="mt-3">No comments yet</h5>
-                        <p>Be the first to share your thoughts about this blog!</p>
+                        <p>Be the first to share your thoughts!</p>
                     </div>
                 }
             </div>
         </div>
+
+        <!-- Likers Modal -->
+        @if (showLikersModal && likers != null)
+        {
+            <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+                <div class="modal-dialog modal-dialog-centered modal-lg">
+                    <div class="modal-content rounded-4 shadow-lg">
+                        <div class="modal-header bg-primary text-white rounded-top-4">
+                            <h5 class="modal-title">
+                                <i class="bi bi-heart-fill me-2"></i>
+                                People who liked this blog
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" @onclick="CloseLikersModal"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            @if (!likers.Any())
+                            {
+                                <div class="text-center text-muted py-4">
+                                    <i class="bi bi-person-x" style="font-size: 3rem;"></i>
+                                    <p class="mt-3 mb-0">No one has liked this blog yet.</p>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="list-group">
+                                    @foreach (var liker in likers)
+                                    {
+                                        <div class="list-group-item d-flex align-items-center justify-content-between">
+                                            <div class="d-flex align-items-center gap-3">
+                                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                                    <i class="bi bi-person-fill"></i>
+                                                </div>
+                                                <span class="fw-bold">@liker.UserName</span>
+                                            </div>
+                                            <small class="text-muted">@liker.LikedAtLocal.ToString("MMM dd, yyyy 'at' h:mm tt")</small>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary rounded-pill px-4" @onclick="CloseLikersModal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Scroll To Top Button -->
+        <button id="scrollToTopBtn" class="btn btn-primary rounded-circle shadow-lg scroll-to-top-btn"
+                @onclick="ScrollToTop"
+                title="Scroll to Top">
+            <i class="bi bi-arrow-up fs-4"></i>
+        </button>
     }
 </div>
 
@@ -332,51 +347,65 @@
     [Parameter] public int BlogId { get; set; }
     private BlogDto? blog;
     private List<BlogCommentDto> comments = new();
+    private List<BlogLikeDto> likers = new();
     private bool loading = true;
     private bool likingInProgress = false;
     private bool commentingInProgress = false;
     private string? CurrentUserId;
     private string newCommentContent = string.Empty;
-    private int editingCommentId = 0;
-    private string editCommentContent = string.Empty;
+    private bool showLikersModal = false;
 
-    private async Task LoadUser()
+    protected override async Task OnInitializedAsync()
     {
+        loading = true;
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Navigation.NavigateTo("/", true);
+        }
 
         if (user.Identity?.IsAuthenticated == true)
         {
             CurrentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         }
-    }
 
-    protected override async Task OnInitializedAsync()
-    {
-        loading = true;
-        await LoadUser();
-
-        // Load blog with current user context
         blog = await BlogService.GetBlogByIdAsync(BlogId, CurrentUserId);
 
         if (blog != null)
         {
-            // Load comments
             comments = (await BlogService.GetBlogCommentsAsync(BlogId, CurrentUserId)).ToList();
 
-            // Increment view count if not the author
             if (blog.AuthorId != CurrentUserId)
             {
                 var response = await BlogService.IncrementViewCountAsync(BlogId);
-                if (response)
-                {
-                    blog.ViewCount += 1;
-                }
+                if (response) blog.ViewCount += 1;
             }
         }
 
         loading = false;
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("initScrollButton", "scrollToTopBtn");
+        }
+    }
+
+    private async Task ShowLikers()
+    {
+        if (blog == null || string.IsNullOrEmpty(CurrentUserId)) return;
+        if (blog.AuthorId != CurrentUserId) return;
+
+        likers = (await BlogService.GetBlogLikesAsync(blog.Id, CurrentUserId)).ToList();
+        showLikersModal = true;
+    }
+
+    private void CloseLikersModal() => showLikersModal = false;
 
     private async Task ToggleLike()
     {
@@ -388,24 +417,11 @@
             var success = await BlogService.ToggleLikeAsync(blog.Id, CurrentUserId);
             if (success)
             {
-                // Update UI optimistically
-                if (blog.IsLikedByCurrentUser)
-                {
-                    blog.LikeCount = Math.Max(0, blog.LikeCount - 1);
-                    blog.IsLikedByCurrentUser = false;
-                }
-                else
-                {
-                    blog.LikeCount += 1;
-                    blog.IsLikedByCurrentUser = true;
-                }
-                StateHasChanged();
+                blog.IsLikedByCurrentUser = !blog.IsLikedByCurrentUser;
+                blog.LikeCount += blog.IsLikedByCurrentUser ? 1 : -1;
             }
         }
-        finally
-        {
-            likingInProgress = false;
-        }
+        finally { likingInProgress = false; }
     }
 
     private async Task AddComment()
@@ -423,114 +439,50 @@
                 blog.CommentCount += 1;
                 newCommentContent = string.Empty;
                 StateHasChanged();
-
-                // Scroll to the new comment after a short delay
                 await Task.Delay(100);
-                await JSRuntime.InvokeVoidAsync("scrollToBottom", "comments-section");
+                await JSRuntime.InvokeVoidAsync("scrollToElement", "comments-section");
             }
         }
-        finally
-        {
-            commentingInProgress = false;
-        }
+        finally { commentingInProgress = false; }
     }
 
-    private void StartEditComment(BlogCommentDto comment)
-    {
-        editingCommentId = comment.Id;
-        editCommentContent = comment.Content;
-    }
-
-    private async Task SaveEditComment()
-    {
-        if (editingCommentId == 0 || string.IsNullOrWhiteSpace(editCommentContent) || commentingInProgress) return;
-
-        commentingInProgress = true;
-        try
-        {
-            var updateDto = new UpdateCommentDto
-            {
-                Id = editingCommentId,
-                Content = editCommentContent.Trim()
-            };
-
-            // Note: You'll need to add this method to your BlogService
-            // var updatedComment = await BlogService.UpdateCommentAsync(updateDto, CurrentUserId);
-
-            // For now, update locally (you should implement the service method)
-            var comment = comments.FirstOrDefault(c => c.Id == editingCommentId);
-            if (comment != null)
-            {
-                comment.Content = editCommentContent.Trim();
-                comment.UpdatedAt = DateTime.UtcNow;
-            }
-
-            CancelEditComment();
-            StateHasChanged();
-        }
-        finally
-        {
-            commentingInProgress = false;
-        }
-    }
-
-    private void CancelEditComment()
-    {
-        editingCommentId = 0;
-        editCommentContent = string.Empty;
-    }
-
-    private async Task DeleteComment(int commentId)
-    {
-        if (commentingInProgress) return;
-
-        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this comment?");
-        if (!confirmed) return;
-
-        commentingInProgress = true;
-        try
-        {
-            // Note: You'll need to add this method to your BlogService
-            // var success = await BlogService.DeleteCommentAsync(commentId, CurrentUserId);
-
-            // For now, remove locally (you should implement the service method)
-            var comment = comments.FirstOrDefault(c => c.Id == commentId);
-            if (comment != null)
-            {
-                comments.Remove(comment);
-                if (blog != null) blog.CommentCount = Math.Max(0, blog.CommentCount - 1);
-                StateHasChanged();
-            }
-        }
-        finally
-        {
-            commentingInProgress = false;
-        }
-    }
-
-    private async Task ScrollToComments()
-    {
-        await JSRuntime.InvokeVoidAsync("scrollToElement", "comments-section");
-    }
-
-    private void BackToBlogs()
-    {
-        Navigation.NavigateTo("/blogs");
-    }
+    private async Task ScrollToComments() => await JSRuntime.InvokeVoidAsync("scrollToElement", "comments-section");
+    private async Task ScrollToTop() => await JSRuntime.InvokeVoidAsync("scrollToTopSmooth");
+    private void BackToBlogs() => Navigation.NavigateTo("/blogs");
 }
 
 <script>
     window.scrollToElement = (elementId) => {
-        const element = document.getElementById(elementId);
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-        }
+        const el = document.getElementById(elementId);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
     };
 
-    window.scrollToBottom = (elementId) => {
-        const element = document.getElementById(elementId);
-        if (element) {
-            element.scrollTop = element.scrollHeight;
-        }
+    window.initScrollButton = (btnId) => {
+        const btn = document.getElementById(btnId);
+        window.addEventListener('scroll', () => {
+            btn.style.display = window.scrollY > 200 ? 'flex' : 'none';
+        });
     };
+
+    window.scrollToTopSmooth = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 </script>
+
+<style>
+    .scroll-to-top-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: background-color 0.3s, transform 0.3s;
+    }
+
+        .scroll-to-top-btn:hover {
+            background-color: #0a58ca;
+            transform: translateY(-2px);
+        }
+</style>

@@ -2,11 +2,14 @@
 @using BlazorAuthApp.DTOs
 @using BlazorAuthApp.Interfaces
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
 @inject IBlogService BlogService
 @inject ICategoryService CategoryService
 @inject NavigationManager NavManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
+@attribute [Authorize]
 
 <PageTitle>Edit Blog</PageTitle>
 
@@ -148,6 +151,11 @@
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
 
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Navigation.NavigateTo("/", true);
+        }
+
         if (user.Identity?.IsAuthenticated == true)
         {
             CurrentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -176,6 +184,11 @@
                 CategoryIds = blog.CategoryIds.ToList(),
                 IsPublished = blog.IsPublished
             };
+        }
+
+        if(blog?.AuthorId != CurrentUserId)
+        {
+            Navigation.NavigateTo("/blogs", true);
         }
         loadingBlog = false;
     }

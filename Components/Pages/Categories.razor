@@ -1,8 +1,12 @@
 ﻿@page "/categories"
 @using BlazorAuthApp.DTOs
 @using BlazorAuthApp.Interfaces
+@using Microsoft.AspNetCore.Authorization
 @inject ICategoryService CategoryService
 @inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@attribute [Authorize]
 
 <h3>Categories</h3>
 
@@ -121,6 +125,12 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Navigation.NavigateTo("/", true); // redirect to home if not logged in
+        }
         await LoadCategories();
     }
 

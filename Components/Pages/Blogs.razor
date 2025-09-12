@@ -2,10 +2,12 @@
 @using BlazorAuthApp.DTOs
 @using BlazorAuthApp.Interfaces
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
 @inject IBlogService BlogService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@attribute [Authorize]
 
 <PageTitle>Blog Collection</PageTitle>
 
@@ -322,6 +324,11 @@
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Navigation.NavigateTo("/", true);
+        }
 
         if (user.Identity?.IsAuthenticated == true)
         {

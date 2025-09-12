@@ -379,20 +379,6 @@ namespace BlazorAuthApp.Services
             return true;
         }
 
-        //public async Task<bool> ToggleLikeAsync(int id, string userId)
-        //{
-        //    var blog = await _context.Blogs
-        //        .FirstOrDefaultAsync(b => b.Id == id && !b.IsDeleted && b.IsPublished);
-
-        //    if (blog == null) return false;
-
-        //    // In a real application, you would track individual likes in a separate table
-        //    // For now, we'll just increment the count
-        //    blog.LikeCount = Math.Max(0, blog.LikeCount + 1);
-        //    await _context.SaveChangesAsync();
-        //    return true;
-        //}
-
         public async Task<bool> BlogExistsAsync(int id)
         {
             return await _context.Blogs.AnyAsync(b => b.Id == id && !b.IsDeleted);
