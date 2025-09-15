@@ -25,5 +25,9 @@ namespace BlazorAuthApp.Model
 
         [StringLength(50, ErrorMessage = "Updated by cannot exceed 50 characters")]
         public string? UpdatedBy { get; set; }
+
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
+        public string? DeletedBy { get; set; }
     }
 }
