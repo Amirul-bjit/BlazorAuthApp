@@ -44,6 +44,9 @@ builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSe
 
 builder.Services.AddAntDesign();
 
+// Add health checks
+builder.Services.AddHealthChecks();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -62,6 +65,9 @@ app.UseHttpsRedirection();
 
 
 app.UseAntiforgery();
+
+// Add health check endpoint
+app.MapHealthChecks("/health");
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
