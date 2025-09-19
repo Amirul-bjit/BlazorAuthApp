@@ -555,6 +555,53 @@ docker-compose -f docker-compose.prod.yml up --build -d
 docker-compose -f docker-compose.prod.yml logs -f
 ```
 
+### EC2 Docker Deployment
+
+#### Current EC2 Setup - How It Works
+
+**Your Current Architecture on EC2:**
+```
+EC2 Instance (t3.small)
+├── Docker Engine
+├── BlazorAuthApp containers:
+│   ├── db-migrate (runs once, exits)
+│   ├── blazorapp (web server)
+│   └── pgdb (PostgreSQL database)
+└── Docker volumes:
+    └── pgdata (database storage)
+```
+
+**Current Workflow:**
+
+1. **SSH to EC2**: You connect via EC2 Instance Connect or SSH
+2. **Run Docker Compose**: `docker-compose up --build -d`
+3. **Container Orchestration**:
+   - PostgreSQL starts first and runs health checks
+   - Migration container runs EF Core migrations, then exits
+   - Blazor app starts and connects to database
+4. **Data Storage**: Database data persists in Docker volume on EC2 disk
+5. **Access**: Application available at `http://EC2_PUBLIC_IP:5000`
+
+#### EC2 Deployment Steps
+
+```bash
+# 1. Connect to your EC2 instance
+ssh -i your-key.pem ec2-user@your-ec2-public-ip
+
+# 2. Clone the repository (if not already done)
+git clone https://github.com/Amirul-bjit/BlazorAuthApp.git
+cd BlazorAuthApp
+
+# 3. Start the application
+docker-compose up --build -d
+
+# 4. Monitor the deployment
+docker-compose logs -f
+
+# 5. Access your application
+# Navigate to: http://your-ec2-public-ip:5000
+```
+
 ### Cloud Deployment Options
 
 #### AWS ECS/EC2
