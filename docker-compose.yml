@@ -1,16 +1,31 @@
 services:
+  # Database migration service
+  db-migrate:
+    build: .
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=pgdb;Port=5432;Database=database;Username=user;Password=password
+    depends_on:
+      pgdb:
+        condition: service_healthy
+    networks:
+      - app-network
+    entrypoint: ["dotnet", "ef", "database", "update", "--project", "./src"]
+    restart: "no"
+
   blazorapp:
     build: .
     container_name: blazorauthapp-blazorapp-1
     ports:
       - "5000:8080"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__DefaultConnection=Host=pgdb;Port=5432;Database=database;Username=user;Password=password
       - ASPNETCORE_URLS=http://+:8080
     depends_on:
       pgdb:
         condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
     networks:
       - app-network
 
@@ -34,25 +49,8 @@ services:
     networks:
       - app-network
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: blazorauthapp-pgadmin-1
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "8080:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    depends_on:
-      - pgdb
-    networks:
-      - app-network
-
 volumes:
   pgdata:
-  pgadmin_data:
 
 networks:
   app-network:
