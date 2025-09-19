@@ -1,4 +1,17 @@
 services:
+  # Database migration service
+  db-migrate:
+    build: .
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=pgdb;Port=5432;Database=database;Username=user;Password=password
+    depends_on:
+      pgdb:
+        condition: service_healthy
+    networks:
+      - app-network
+    command: dotnet ef database update --project ./src
+    restart: "no"
+
   blazorapp:
     build: .
     container_name: blazorauthapp-blazorapp-1
@@ -11,6 +24,8 @@ services:
     depends_on:
       pgdb:
         condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
     networks:
       - app-network
 
