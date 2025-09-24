@@ -1,3 +1,4 @@
+using Amazon.S3;
 using BlazorAuthApp.Components;
 using BlazorAuthApp.Components.Account;
 using BlazorAuthApp.Data;
@@ -35,10 +36,13 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
+builder.Services.AddAWSService<IAmazonS3>();
+
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IBlogService, BlogService>();
 builder.Services.AddScoped<IBlogLikeService, BlogLikeService>();
 builder.Services.AddScoped<IBlogCommentService, BlogCommentService>();
+builder.Services.AddScoped<IImageUploadService, ImageUploadService>();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 

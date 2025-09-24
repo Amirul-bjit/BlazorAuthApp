@@ -2,7 +2,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy csproj and restore
+# Copy csproj and restore dependencies
 COPY BlazorAuthApp.csproj ./
 RUN dotnet restore "BlazorAuthApp.csproj"
 
@@ -10,12 +10,21 @@ RUN dotnet restore "BlazorAuthApp.csproj"
 COPY . ./
 RUN dotnet publish "BlazorAuthApp.csproj" -c Release -o /app/publish
 
-# Stage 2: Runtime with SDK for EF Tools
+# Stage 2: Runtime with SDK for EF Tools and AWS CLI
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS final
 WORKDIR /app
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Update package lists and install required packages
+RUN apt-get update && apt-get install -y \
+    curl \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install AWS CLI v2
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip \
+    && ./aws/install \
+    && rm -rf awscliv2.zip aws/
 
 # Install EF Core tools globally
 RUN dotnet tool install --global dotnet-ef
@@ -32,9 +41,15 @@ RUN adduser --disabled-password --gecos '' dotnetuser && \
     chown -R dotnetuser /app && \
     chown -R dotnetuser /root/.dotnet
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# Switch to non-root user for security
+USER dotnetuser
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
+# Expose port
 EXPOSE 8080
+
+# Entry point
 ENTRYPOINT ["dotnet", "BlazorAuthApp.dll"]

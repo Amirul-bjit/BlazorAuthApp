@@ -1,0 +1,86 @@
+﻿@using BlazorAuthApp.Interfaces
+@using Microsoft.AspNetCore.Components.Forms
+@inject IImageUploadService ImageUploadService
+@inject IJSRuntime JSRuntime
+
+<div class="image-upload-component">
+    <div class="mb-3">
+        <label for="imageFile" class="form-label">Upload Image</label>
+        <InputFile id="imageFile" OnChange="HandleFileSelected" class="form-control" accept="image/*" />
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="text-danger mt-2">@ErrorMessage</div>
+        }
+    </div>
+
+    @if (IsUploading)
+    {
+        <div class="text-info">
+            <i class="bi bi-upload"></i> Uploading image...
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(ImageUrl))
+    {
+        <div class="mt-3">
+            <img src="@ImageUrl" alt="Uploaded image" class="img-thumbnail" style="max-width: 200px; max-height: 200px;" />
+            <div class="mt-2">
+                <small class="text-muted">Image URL: @ImageUrl</small>
+                <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="CopyToClipboard">
+                    <i class="bi bi-clipboard"></i> Copy URL
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<string> OnImageUploaded { get; set; }
+
+    public string? ImageUrl { get; private set; }
+    public string? ErrorMessage { get; private set; }
+    public bool IsUploading { get; private set; }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        ErrorMessage = null;
+
+        var file = e.File;
+        if (file == null) return;
+
+        if (!ImageUploadService.ValidateImageFile(file))
+        {
+            ErrorMessage = "Please select a valid image file (JPG, PNG, GIF, WebP, BMP) under 10MB.";
+            return;
+        }
+
+        try
+        {
+            IsUploading = true;
+            StateHasChanged();
+
+            ImageUrl = await ImageUploadService.UploadImageAsync(file);
+
+            // Notify parent component
+            await OnImageUploaded.InvokeAsync(ImageUrl);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            IsUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyToClipboard()
+    {
+        if (!string.IsNullOrEmpty(ImageUrl))
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", ImageUrl);
+        }
+    }
+}
