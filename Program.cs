@@ -25,6 +25,21 @@ catch (Exception ex)
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel for container environments
+if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true")
+{
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ListenAnyIP(8081); // HTTP only in containers
+    });
+}
+
+// Force HTTP only for Docker deployment
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(8080); // HTTP only
+});
+
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

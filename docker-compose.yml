@@ -7,9 +7,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
-      - "8081:8081"
     environment:
-      - ASPNETCORE_URLS=http://+:8080;https://+:8081
+      - ASPNETCORE_URLS=http://+:8080  # Removed HTTPS since we're going HTTP-only
       - ASPNETCORE_ENVIRONMENT=Production
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
@@ -20,7 +19,7 @@ services:
       - PUBLIC_READ_ACCESS=${PUBLIC_READ_ACCESS:-true}
       - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
     depends_on:
-      - db
+      - migration  # Changed to depend on migration instead of db
     networks:
       - app-network
 
@@ -34,6 +33,31 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    networks:
+      - app-network
+    healthcheck:  # Added healthcheck for migration dependency
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migration:
+    build: .
+    depends_on:
+      db:  # Fixed: Changed from 'postgres' to 'db' (your service name)
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}  # Use same connection string
+    command: >
+      bash -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        cd /src &&
+        dotnet ef database update --no-build &&
+        echo 'Migration completed successfully'
+      "
+    volumes:
+      - .:/src
     networks:
       - app-network
 
