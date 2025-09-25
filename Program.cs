@@ -1,4 +1,5 @@
 using Amazon.S3;
+using Amazon.Extensions.NETCore.Setup;
 using BlazorAuthApp.Components;
 using BlazorAuthApp.Components.Account;
 using BlazorAuthApp.Data;
@@ -36,7 +37,14 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-builder.Services.AddAWSService<IAmazonS3>();
+// Configure AWS with credentials from appsettings
+var awsOptions = builder.Configuration.GetAWSOptions();
+awsOptions.Credentials = new Amazon.Runtime.BasicAWSCredentials(
+    builder.Configuration["AWS:AccessKey"] ?? throw new InvalidOperationException("AWS AccessKey not configured"),
+    builder.Configuration["AWS:SecretKey"] ?? throw new InvalidOperationException("AWS SecretKey not configured")
+);
+
+builder.Services.AddAWSService<IAmazonS3>(awsOptions);
 
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IBlogService, BlogService>();
@@ -66,7 +74,6 @@ else
 }
 
 app.UseHttpsRedirection();
-
 
 app.UseAntiforgery();
 

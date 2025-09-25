@@ -5,30 +5,69 @@
 @using Microsoft.AspNetCore.Authorization
 @inject IBlogService BlogService
 @inject ICategoryService CategoryService
+@inject IImageUploadService ImageUploadService
 @inject NavigationManager NavManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @attribute [Authorize]
 
-<PageTitle>Edit Blog</PageTitle>
+<PageTitle>Edit Blog - @(editBlogDto?.Title ?? "Loading...")</PageTitle>
 
-<div class="container my-4">
-
-    <!-- Top Back Button -->
-    <div class="mb-4">
-        <button type="button" class="btn btn-secondary px-4 py-2 rounded-3 fw-semibold" @onclick="BackToBlogs">
-            <i class="bi bi-arrow-left-circle me-2"></i> Back to All Blogs
-        </button>
+<div class="container-fluid px-3 py-4">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-3">
+                    <li class="breadcrumb-item">
+                        <a href="/blogs" class="text-decoration-none">
+                            <i class="bi bi-house-door me-1"></i>All Blogs
+                        </a>
+                    </li>
+                    <li class="breadcrumb-item active">Edit Blog</li>
+                </ol>
+            </nav>
+            
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-1 fw-bold text-primary">
+                        <i class="bi bi-pencil-square me-2"></i>Edit Blog Post
+                    </h1>
+                    <p class="text-muted mb-0">Update your blog post content and settings</p>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="BackToBlogs">
+                        <i class="bi bi-arrow-left me-1"></i>Back
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
-
-    <h2 class="mb-4 fw-bold text-center">Edit Blog</h2>
 
     @if (loadingBlog)
     {
-        <div class="text-center py-4">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
+        <div class="row justify-content-center py-5">
+            <div class="col-auto text-center">
+                <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                    <span class="visually-hidden">Loading blog...</span>
+                </div>
+                <p class="text-muted">Loading your blog post...</p>
+            </div>
+        </div>
+    }
+    else if (editBlogDto == null)
+    {
+        <div class="row justify-content-center py-5">
+            <div class="col-md-6 text-center">
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    Blog post not found or you don't have permission to edit it.
+                </div>
+                <button type="button" class="btn btn-primary" @onclick="BackToBlogs">
+                    <i class="bi bi-arrow-left me-2"></i>Back to All Blogs
+                </button>
             </div>
         </div>
     }
@@ -36,96 +75,285 @@
     {
         <EditForm Model="editBlogDto" OnValidSubmit="HandleValidSubmit">
             <DataAnnotationsValidator />
+            
+            <div class="row">
+                <!-- Main Content Column -->
+                <div class="col-lg-8">
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-header bg-white border-bottom-0 py-3">
+                            <h5 class="mb-0 fw-semibold">
+                                <i class="bi bi-file-text me-2 text-primary"></i>Content
+                            </h5>
+                        </div>
+                        <div class="card-body p-4">
+                            <!-- Title -->
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold d-flex justify-content-between">
+                                    Title <span class="fw-normal text-muted">Required</span>
+                                </label>
+                                <InputText class="@GetInputClass(editBlogDto.Title, 5, 100)" 
+                                          @bind-Value="editBlogDto.Title" 
+                                          @oninput="UpdateCharCount"
+                                          placeholder="Enter an engaging title for your blog post..." />
+                                <div class="d-flex justify-content-between mt-1">
+                                    <div class="text-danger small">
+                                        @if (submitted) { @GetFieldError(editBlogDto.Title, "Title", 5, 100) }
+                                    </div>
+                                    <small class="@GetCharCountClass(editBlogDto.Title, 100)">
+                                        @GetCharCount(editBlogDto.Title)/100
+                                    </small>
+                                </div>
+                            </div>
 
-            <!-- Title -->
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Title</label>
-                <InputText class="@GetInputClass(editBlogDto.Title, 5, 100)" @bind-Value="editBlogDto.Title" @oninput="UpdateCharCount" />
-                @if (submitted)
-                {
-                    <div class="text-danger small mt-1">@GetFieldError(editBlogDto.Title, "Title", 5, 100)</div>
-                }
-                <small class="text-muted">Characters: @GetCharCount(editBlogDto.Title)/100</small>
+                            <!-- Summary -->
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold d-flex justify-content-between">
+                                    Summary <span class="fw-normal text-muted">Required</span>
+                                </label>
+                                <InputTextArea class="@GetInputClass(editBlogDto.Summary, 20, 250)" 
+                                              @bind-Value="editBlogDto.Summary" 
+                                              @oninput="UpdateCharCount"
+                                              Rows="3" 
+                                              placeholder="Write a compelling summary that will appear in blog listings..." />
+                                <div class="d-flex justify-content-between mt-1">
+                                    <div class="text-danger small">
+                                        @if (submitted) { @GetFieldError(editBlogDto.Summary, "Summary", 20, 250) }
+                                    </div>
+                                    <small class="@GetCharCountClass(editBlogDto.Summary, 250)">
+                                        @GetCharCount(editBlogDto.Summary)/250
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- Content -->
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold d-flex justify-content-between">
+                                    Content <span class="fw-normal text-muted">Required</span>
+                                </label>
+                                <InputTextArea class="@GetInputClass(editBlogDto.Content, 50, 5000)" 
+                                              @bind-Value="editBlogDto.Content" 
+                                              @oninput="UpdateCharCount"
+                                              Rows="12" 
+                                              placeholder="Start writing your blog content here..." />
+                                <div class="d-flex justify-content-between mt-1">
+                                    <div class="text-danger small">
+                                        @if (submitted) { @GetFieldError(editBlogDto.Content, "Content", 50, 5000) }
+                                    </div>
+                                    <small class="@GetCharCountClass(editBlogDto.Content, 5000)">
+                                        @GetCharCount(editBlogDto.Content)/5000
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- Featured Image -->
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold">Featured Image</label>
+                                
+                                <!-- Current Image Preview -->
+                                @if (!string.IsNullOrEmpty(editBlogDto.FeaturedImageUrl))
+                                {
+                                    <div class="mb-3">
+                                        <div class="card" style="max-width: 400px;">
+                                            <img src="@editBlogDto.FeaturedImageUrl" 
+                                                 class="card-img-top" 
+                                                 style="height: 200px; object-fit: cover;" 
+                                                 alt="Featured image preview"
+                                                 @onerror="OnImageError" />
+                                            <div class="card-body p-2">
+                                                <small class="text-muted">Featured Image</small>
+                                                <button type="button" class="btn btn-sm btn-outline-danger ms-2" @onclick="RemoveImage">
+                                                    <i class="bi bi-trash"></i> Remove
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+
+                                <!-- Image Upload Options -->
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Upload Image</label>
+                                        <div class="d-flex gap-2">
+                                            <InputFile OnChange="HandleImageUpload" 
+                                                      accept="image/*" 
+                                                      class="form-control rounded-3" 
+                                                      disabled="@isImageUploading" />
+                                            @if (isImageUploading)
+                                            {
+                                                <div class="spinner-border spinner-border-sm align-self-center" role="status">
+                                                    <span class="visually-hidden">Uploading...</span>
+                                                </div>
+                                            }
+                                        </div>
+                                        <small class="text-muted">Supported: JPG, PNG, GIF (Max: 5MB)</small>
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Or Enter Image URL</label>
+                                        <InputText class="form-control rounded-3" 
+                                                  @bind-Value="editBlogDto.FeaturedImageUrl" 
+                                                  placeholder="https://example.com/image.jpg"
+                                                  @oninput="OnImageUrlChanged" />
+                                        <small class="text-muted">Enter a direct link to an image</small>
+                                    </div>
+                                </div>
+
+                                <!-- Upload Progress -->
+                                @if (isImageUploading && uploadProgress > 0)
+                                {
+                                    <div class="mt-3">
+                                        <div class="progress">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                 role="progressbar" 
+                                                 style="width: @(uploadProgress)%" 
+                                                 aria-valuenow="@uploadProgress" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">
+                                                @uploadProgress%
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">Uploading image...</small>
+                                    </div>
+                                }
+
+                                <!-- Error Display -->
+                                @if (!string.IsNullOrEmpty(imageError))
+                                {
+                                    <div class="alert alert-danger mt-2 d-flex align-items-center">
+                                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                        @imageError
+                                        <button type="button" class="btn-close ms-auto" @onclick="ClearImageError"></button>
+                                    </div>
+                                }
+
+                                <!-- Success Display -->
+                                @if (!string.IsNullOrEmpty(imageSuccess))
+                                {
+                                    <div class="alert alert-success mt-2 d-flex align-items-center">
+                                        <i class="bi bi-check-circle-fill me-2"></i>
+                                        @imageSuccess
+                                        <button type="button" class="btn-close ms-auto" @onclick="ClearImageSuccess"></button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sidebar Column -->
+                <div class="col-lg-4">
+                    <!-- Publish Settings -->
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-header bg-white border-bottom-0 py-3">
+                            <h5 class="mb-0 fw-semibold">
+                                <i class="bi bi-gear me-2 text-primary"></i>Publish Settings
+                            </h5>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="form-check form-switch mb-3">
+                                <InputCheckbox class="form-check-input" @bind-Value="editBlogDto.IsPublished" />
+                                <label class="form-check-label fw-semibold">
+                                    @(editBlogDto.IsPublished ? "Published" : "Draft")
+                                </label>
+                                <small class="d-block text-muted mt-1">
+                                    @(editBlogDto.IsPublished ? 
+                                        "This post is live and visible to readers" : 
+                                        "This post is saved as a draft")
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Categories -->
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-header bg-white border-bottom-0 py-3">
+                            <h5 class="mb-0 fw-semibold d-flex justify-content-between">
+                                <span><i class="bi bi-tags me-2 text-primary"></i>Categories</span>
+                                <span class="fw-normal text-muted">Required</span>
+                            </h5>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="category-selection">
+                                @foreach (var category in categories)
+                                {
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" 
+                                               type="checkbox" 
+                                               id="category-@category.Id"
+                                               checked="@editBlogDto.CategoryIds.Contains(category.Id)"
+                                               @onchange="@(e => OnCategoryToggle(category.Id, (bool)e.Value!))" />
+                                        <label class="form-check-label fw-medium" for="category-@category.Id">
+                                            @category.Name
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                            @if (submitted && !editBlogDto.CategoryIds.Any())
+                            {
+                                <div class="text-danger small mt-2">
+                                    <i class="bi bi-exclamation-circle me-1"></i>
+                                    Please select at least one category.
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- SEO Settings -->
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-header bg-white border-bottom-0 py-3">
+                            <h5 class="mb-0 fw-semibold">
+                                <i class="bi bi-search me-2 text-primary"></i>SEO
+                            </h5>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Meta Description</label>
+                                <InputTextArea class="@GetInputClass(editBlogDto.MetaDescription, 50, 160)" 
+                                              @bind-Value="editBlogDto.MetaDescription" 
+                                              @oninput="UpdateCharCount"
+                                              Rows="3" 
+                                              placeholder="Write a description for search engines..." />
+                                <div class="d-flex justify-content-between mt-1">
+                                    <div class="text-danger small">
+                                        @if (submitted) { @GetFieldError(editBlogDto.MetaDescription, "Meta Description", 50, 160) }
+                                    </div>
+                                    <small class="@GetCharCountClass(editBlogDto.MetaDescription, 160)">
+                                        @GetCharCount(editBlogDto.MetaDescription)/160
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body p-4">
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary btn-lg fw-semibold" disabled="@isSubmitting">
+                                    @if (isSubmitting)
+                                    {
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        <span>Updating...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-check-circle me-2"></i>
+                                        <span>Update Blog Post</span>
+                                    }
+                                </button>
+                                
+                                <button type="button" class="btn btn-outline-secondary" @onclick="BackToBlogs">
+                                    <i class="bi bi-arrow-left me-2"></i>Back to All Blogs
+                                </button>
+                                
+                                <button type="button" class="btn btn-outline-danger" @onclick="DiscardChanges">
+                                    <i class="bi bi-x-circle me-2"></i>Discard Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-
-            <!-- Summary -->
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Summary</label>
-                <InputTextArea class="@GetInputClass(editBlogDto.Summary, 20, 250)" @bind-Value="editBlogDto.Summary" Rows="3" @oninput="UpdateCharCount" />
-                @if (submitted)
-                {
-                    <div class="text-danger small mt-1">@GetFieldError(editBlogDto.Summary, "Summary", 20, 250)</div>
-                }
-                <small class="text-muted">Characters: @GetCharCount(editBlogDto.Summary)/250</small>
-            </div>
-
-            <!-- Content -->
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Content</label>
-                <InputTextArea class="@GetInputClass(editBlogDto.Content, 50, 5000)" @bind-Value="editBlogDto.Content" Rows="6" @oninput="UpdateCharCount" />
-                @if (submitted)
-                {
-                    <div class="text-danger small mt-1">@GetFieldError(editBlogDto.Content, "Content", 50, 5000)</div>
-                }
-                <small class="text-muted">Characters: @GetCharCount(editBlogDto.Content)/5000</small>
-            </div>
-
-            <!-- Featured Image -->
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Featured Image URL</label>
-                <InputText class="form-control rounded-3" @bind-Value="editBlogDto.FeaturedImageUrl" />
-            </div>
-
-            <!-- Meta Description -->
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Meta Description</label>
-                <InputText class="@GetInputClass(editBlogDto.MetaDescription, 50, 160)" @bind-Value="editBlogDto.MetaDescription" @oninput="UpdateCharCount" />
-                @if (submitted)
-                {
-                    <div class="text-danger small mt-1">@GetFieldError(editBlogDto.MetaDescription, "Meta Description", 50, 160)</div>
-                }
-                <small class="text-muted">Characters: @GetCharCount(editBlogDto.MetaDescription)/160</small>
-            </div>
-
-            <!-- Categories -->
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Categories</label>
-                <select class="form-select rounded-3" multiple @onchange="OnCategoryChange">
-                    @foreach (var category in categories)
-                    {
-                        <option value="@category.Id" selected="@editBlogDto.CategoryIds.Contains(category.Id)">
-                            @category.Name
-                        </option>
-                    }
-                </select>
-                <small class="text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple categories.</small>
-                @if (submitted && !editBlogDto.CategoryIds.Any())
-                {
-                    <div class="text-danger small mt-1">At least one category must be selected.</div>
-                }
-            </div>
-
-            <!-- Publish -->
-            <div class="form-check form-switch mb-3">
-                <InputCheckbox class="form-check-input" @bind-Value="editBlogDto.IsPublished" />
-                <label class="form-check-label">Publish immediately</label>
-            </div>
-
-            <!-- Buttons -->
-            <div class="d-flex gap-3">
-                <button type="submit" class="btn btn-primary px-4 py-2 rounded-3 fw-semibold">
-                    <i class="bi bi-save me-2"></i> Update Blog
-                </button>
-
-                <button type="button" class="btn btn-outline-danger px-4 py-2 rounded-3 fw-semibold" @onclick="DiscardBlog">
-                    <i class="bi bi-x-circle me-2"></i> Discard
-                </button>
-
-                <button type="button" class="btn btn-secondary px-4 py-2 rounded-3 fw-semibold" @onclick="BackToBlogs">
-                    <i class="bi bi-arrow-left-circle me-2"></i> Back to All Blogs
-                </button>
-            </div>
-
         </EditForm>
     }
 </div>
@@ -138,6 +366,12 @@
     private bool loadingBlog = true;
     private string? CurrentUserId;
     private bool submitted = false;
+    private bool isSubmitting = false;
+    private bool isImageUploading = false;
+    private int uploadProgress = 0;
+    private string? imageError;
+    private string? imageSuccess;
+    private Timer? progressTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -170,91 +404,194 @@
     private async Task LoadBlog()
     {
         loadingBlog = true;
-        var blog = await BlogService.GetBlogByIdAsync(BlogId);
-        if (blog != null)
+        try
         {
-            editBlogDto = new UpdateBlogDto
+            var blog = await BlogService.GetBlogByIdAsync(BlogId);
+            if (blog != null && blog.AuthorId == CurrentUserId)
             {
-                Id = blog.Id,
-                Title = blog.Title,
-                Summary = blog.Summary,
-                Content = blog.Content,
-                FeaturedImageUrl = blog.FeaturedImageUrl,
-                MetaDescription = blog.MetaDescription,
-                CategoryIds = blog.CategoryIds.ToList(),
-                IsPublished = blog.IsPublished
-            };
-        }
-
-        if(blog?.AuthorId != CurrentUserId)
-        {
-            Navigation.NavigateTo("/blogs", true);
-        }
-        loadingBlog = false;
-    }
-
-    private void OnCategoryChange(ChangeEventArgs e)
-    {
-        editBlogDto.CategoryIds.Clear();
-        if (e.Value is not null)
-        {
-            var selected = e.Value as IEnumerable<string> ?? Array.Empty<string>();
-            foreach (var val in selected)
+                editBlogDto = new UpdateBlogDto
+                {
+                    Id = blog.Id,
+                    Title = blog.Title,
+                    Summary = blog.Summary,
+                    Content = blog.Content,
+                    FeaturedImageUrl = blog.FeaturedImageUrl,
+                    MetaDescription = blog.MetaDescription,
+                    CategoryIds = blog.CategoryIds.ToList(),
+                    IsPublished = blog.IsPublished
+                };
+            }
+            else
             {
-                if (int.TryParse(val, out int id))
-                    editBlogDto.CategoryIds.Add(id);
+                editBlogDto = null;
             }
         }
+        finally
+        {
+            loadingBlog = false;
+        }
     }
+
+    private void OnCategoryToggle(int categoryId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!editBlogDto.CategoryIds.Contains(categoryId))
+                editBlogDto.CategoryIds.Add(categoryId);
+        }
+        else
+        {
+            editBlogDto.CategoryIds.Remove(categoryId);
+        }
+    }
+
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        ClearMessages();
+        isImageUploading = true;
+        uploadProgress = 0;
+
+        try
+        {
+            StartProgressSimulation();
+            var imageUrl = await ImageUploadService.UploadImageAsync(file);
+            
+            if (!string.IsNullOrEmpty(imageUrl))
+            {
+                editBlogDto.FeaturedImageUrl = imageUrl;
+                imageSuccess = "Image uploaded successfully!";
+                uploadProgress = 100;
+            }
+            else
+            {
+                imageError = "Failed to upload image. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            imageError = $"Error uploading image: {ex.Message}";
+        }
+        finally
+        {
+            isImageUploading = false;
+            progressTimer?.Dispose();
+            StateHasChanged();
+        }
+    }
+
+    private void StartProgressSimulation()
+    {
+        uploadProgress = 0;
+        progressTimer = new Timer(_ => 
+        {
+            if (uploadProgress < 90 && isImageUploading)
+            {
+                uploadProgress += Random.Shared.Next(5, 15);
+                if (uploadProgress > 90) uploadProgress = 90;
+                InvokeAsync(StateHasChanged);
+            }
+        }, null, 100, 200);
+    }
+
+    private void OnImageUrlChanged(ChangeEventArgs e) => ClearMessages();
+    private void OnImageError() => imageError = "Failed to load the image. Please check the URL.";
+    
+    private void RemoveImage()
+    {
+        editBlogDto.FeaturedImageUrl = string.Empty;
+        ClearMessages();
+    }
+
+    private void ClearMessages()
+    {
+        imageError = null;
+        imageSuccess = null;
+    }
+
+    private void ClearImageError() => imageError = null;
+    private void ClearImageSuccess() => imageSuccess = null;
 
     private async Task HandleValidSubmit()
     {
         submitted = true;
+        isSubmitting = true;
 
-        if (string.IsNullOrEmpty(CurrentUserId)) return;
-        if (!IsFormValid()) return;
+        if (string.IsNullOrEmpty(CurrentUserId)) 
+        {
+            isSubmitting = false;
+            return;
+        }
+        
+        if (!IsFormValid()) 
+        {
+            isSubmitting = false;
+            return;
+        }
 
-        var result = await BlogService.UpdateBlogAsync(editBlogDto, CurrentUserId);
-        if (result != null)
-            NavManager.NavigateTo("/blogs");
+        try
+        {
+            var result = await BlogService.UpdateBlogAsync(editBlogDto, CurrentUserId);
+            if (result != null)
+                NavManager.NavigateTo("/blogs");
+            else
+                await JS.InvokeVoidAsync("alert", "Failed to update blog. Please try again.");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "An error occurred while updating the blog.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
     }
 
-    private async Task DiscardBlog()
+    private async Task DiscardChanges()
     {
         if (await JS.InvokeAsync<bool>("confirm", "Are you sure you want to discard all changes?"))
         {
             await LoadBlog();
+            ClearMessages();
         }
     }
 
-    private void BackToBlogs()
-    {
-        NavManager.NavigateTo("/blogs");
-    }
-
+    private void BackToBlogs() => NavManager.NavigateTo("/blogs");
     private void UpdateCharCount(ChangeEventArgs e) => StateHasChanged();
 
-    // Validation helpers
+    // Helper methods (identical to CreateBlog)
     private string GetInputClass(string? value, int min, int max)
     {
-        if (!submitted) return "form-control rounded-3";
+        var baseClass = "form-control rounded-3";
+        if (!submitted) return baseClass;
+        
+        var error = GetFieldError(value, "", min, max);
+        return string.IsNullOrEmpty(error) ? baseClass : $"{baseClass} is-invalid";
+    }
 
-        return string.IsNullOrEmpty(value) || (value.Length >= min && value.Length <= max)
-            ? "form-control rounded-3"
-            : "form-control rounded-3 border border-danger";
+    private string GetCharCountClass(string? value, int max)
+    {
+        var count = GetCharCount(value);
+        var percentage = (double)count / max;
+        
+        return percentage switch
+        {
+            >= 0.9 => "text-danger",
+            >= 0.75 => "text-warning",
+            _ => "text-muted"
+        };
     }
 
     private string GetFieldError(string? value, string fieldName, int min, int max)
     {
         if (string.IsNullOrWhiteSpace(value))
             return $"{fieldName} is required (min {min} characters).";
-
         if (value.Length < min)
             return $"{fieldName} must be at least {min} characters.";
-
         if (value.Length > max)
             return $"{fieldName} cannot exceed {max} characters.";
-
         return string.Empty;
     }
 
@@ -262,10 +599,15 @@
 
     private bool IsFormValid()
     {
-        return string.IsNullOrWhiteSpace(GetFieldError(editBlogDto.Title, "Title", 5, 100)) &&
-               string.IsNullOrWhiteSpace(GetFieldError(editBlogDto.Summary, "Summary", 20, 250)) &&
-               string.IsNullOrWhiteSpace(GetFieldError(editBlogDto.Content, "Content", 50, 5000)) &&
-               string.IsNullOrWhiteSpace(GetFieldError(editBlogDto.MetaDescription, "Meta Description", 50, 160)) &&
+        return string.IsNullOrEmpty(GetFieldError(editBlogDto.Title, "Title", 5, 100)) &&
+               string.IsNullOrEmpty(GetFieldError(editBlogDto.Summary, "Summary", 20, 250)) &&
+               string.IsNullOrEmpty(GetFieldError(editBlogDto.Content, "Content", 50, 5000)) &&
+               string.IsNullOrEmpty(GetFieldError(editBlogDto.MetaDescription, "Meta Description", 50, 160)) &&
                editBlogDto.CategoryIds.Any();
+    }
+
+    public void Dispose()
+    {
+        progressTimer?.Dispose();
     }
 }
