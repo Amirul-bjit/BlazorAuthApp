@@ -1,0 +1,11 @@
+Dockerfile
+.dockerignore
+.env
+.git
+.vs
+.vscode
+bin/
+obj/
+out/
+*.md
+LICENSE

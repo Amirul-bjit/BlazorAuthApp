@@ -466,32 +466,26 @@ docker-compose run --rm blazorapp dotnet ef database update PreviousMigrationNam
 
 ### Environment Variables
 
-#### Docker Environment
-Set in `docker-compose.yml`:
-```yaml
-services:
-  blazorapp:
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Host=pgdb;Port=5432;Database=database;Username=user;Password=password
-      - ASPNETCORE_URLS=http://+:8080
-```
+This project uses environment variables for configuration. Copy `.env.example` to `.env` or `.env.docker` and fill in your secrets before running locally or in Docker.
 
-#### Local Development
-Set in `appsettings.Development.json`:
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Database=BlazorAuthApp;Username=user;Password=password;Port=5432"
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  }
-}
-```
+- For Docker, use `.env.docker` and run:
+  ```pwsh
+  docker compose --env-file .env.docker up -d
+  ```
+- For local development, use `.env`.
+
+### Required variables
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+- AWS_DEFAULT_REGION
+- S3_BUCKET_NAME
+- POSTGRES_PASSWORD
+- DB_CONNECTION_STRING
+- MAX_FILE_SIZE_BYTES
+- ALLOWED_EXTENSIONS
+- PUBLIC_READ_ACCESS
+
+See `.env.example` for details.
 
 ### Custom Configuration Options
 

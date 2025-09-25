@@ -145,3 +145,9 @@ BlazorAuthApp/
 - Database: database
 - Username: user
 - Password: password
+
+## Docker Environment Setup
+
+- Copy `.env.example` to `.env.docker` and fill in your secrets.
+- Do NOT commit `.env.docker` to source control.
+- All sensitive configuration (AWS, DB, etc.) is injected via environment variables.
