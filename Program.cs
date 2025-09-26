@@ -25,6 +25,14 @@ catch (Exception ex)
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Check if we're running EF migrations or design-time operations
+var isDesignTime = args.Contains("--") || 
+                   Environment.GetEnvironmentVariable("EF_DESIGN_TIME") == "true" ||
+                   AppDomain.CurrentDomain.GetAssemblies()
+                       .Any(assembly => assembly.FullName?.StartsWith("Microsoft.EntityFrameworkCore.Design") == true);
+
+Console.WriteLine($"Design-time mode: {isDesignTime}");
+
 // Configure Kestrel for container environments
 if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true")
 {
@@ -66,39 +74,65 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-// Get AWS credentials exclusively from the .env file
-var awsAccessKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID") 
-    ?? throw new InvalidOperationException("AWS_ACCESS_KEY_ID not found in .env file");
-    
-var awsSecretKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY")
-    ?? throw new InvalidOperationException("AWS_SECRET_ACCESS_KEY not found in .env file");
-    
-var awsRegion = Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION")
-    ?? throw new InvalidOperationException("AWS_DEFAULT_REGION not found in .env file");
-    
-var s3BucketName = Environment.GetEnvironmentVariable("S3_BUCKET_NAME")
-    ?? throw new InvalidOperationException("S3_BUCKET_NAME not found in .env file");
-
-// Disable AWS SDK's automatic credential resolution
-Environment.SetEnvironmentVariable("AWS_SDK_LOAD_USER_SETTINGS", "false");
-
-// Configure AWS with explicit credentials from .env
-var awsOptions = new AWSOptions
+// Configure AWS only when NOT running EF migrations
+if (!isDesignTime)
 {
-    Credentials = new Amazon.Runtime.BasicAWSCredentials(awsAccessKey, awsSecretKey),
-    Region = Amazon.RegionEndpoint.GetBySystemName(awsRegion)
-};
+    try 
+    {
+        // Get AWS credentials exclusively from environment variables
+        var awsAccessKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID") 
+            ?? throw new InvalidOperationException("AWS_ACCESS_KEY_ID not found in environment variables");
+            
+        var awsSecretKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY")
+            ?? throw new InvalidOperationException("AWS_SECRET_ACCESS_KEY not found in environment variables");
+            
+        var awsRegion = Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION")
+            ?? throw new InvalidOperationException("AWS_DEFAULT_REGION not found in environment variables");
+            
+        var s3BucketName = Environment.GetEnvironmentVariable("S3_BUCKET_NAME")
+            ?? throw new InvalidOperationException("S3_BUCKET_NAME not found in environment variables");
 
-builder.Services.AddAWSService<IAmazonS3>(awsOptions);
+        // Disable AWS SDK's automatic credential resolution
+        Environment.SetEnvironmentVariable("AWS_SDK_LOAD_USER_SETTINGS", "false");
 
-// Store bucket name in configuration for services to use
-builder.Configuration["AWS:S3:BucketName"] = s3BucketName;
+        // Configure AWS with explicit credentials from environment
+        var awsOptions = new AWSOptions
+        {
+            Credentials = new Amazon.Runtime.BasicAWSCredentials(awsAccessKey, awsSecretKey),
+            Region = Amazon.RegionEndpoint.GetBySystemName(awsRegion)
+        };
+
+        builder.Services.AddAWSService<IAmazonS3>(awsOptions);
+
+        // Store bucket name in configuration for services to use
+        builder.Configuration["AWS:S3:BucketName"] = s3BucketName;
+
+        Console.WriteLine("AWS services configured successfully");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"AWS configuration skipped: {ex.Message}");
+        // For design-time or when AWS is not available, add a null S3 service
+        builder.Services.AddScoped<IAmazonS3>(provider => null!);
+    }
+}
+else
+{
+    Console.WriteLine("Skipping AWS configuration during design-time operations");
+    // Add a placeholder S3 service for design-time
+    builder.Services.AddScoped<IAmazonS3>(provider => null!);
+}
 
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IBlogService, BlogService>();
 builder.Services.AddScoped<IBlogLikeService, BlogLikeService>();
 builder.Services.AddScoped<IBlogCommentService, BlogCommentService>();
-builder.Services.AddScoped<IImageUploadService, ImageUploadService>();
+
+// Only add ImageUploadService if not in design-time mode
+if (!isDesignTime)
+{
+    builder.Services.AddScoped<IImageUploadService, ImageUploadService>();
+}
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 

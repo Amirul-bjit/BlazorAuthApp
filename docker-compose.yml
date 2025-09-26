@@ -8,7 +8,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - ASPNETCORE_URLS=http://+:8080  # Removed HTTPS since we're going HTTP-only
+      - ASPNETCORE_URLS=http://+:8080
       - ASPNETCORE_ENVIRONMENT=Production
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
@@ -19,7 +19,8 @@ services:
       - PUBLIC_READ_ACCESS=${PUBLIC_READ_ACCESS:-true}
       - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
     depends_on:
-      - migration  # Changed to depend on migration instead of db
+      migration:
+        condition: service_completed_successfully  # Wait for migration to complete successfully
     networks:
       - app-network
 
@@ -35,31 +36,31 @@ services:
       - "5432:5432"
     networks:
       - app-network
-    healthcheck:  # Added healthcheck for migration dependency
+    healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   migration:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.migration  # Use separate migration Dockerfile
     depends_on:
-      db:  # Fixed: Changed from 'postgres' to 'db' (your service name)
+      db:
         condition: service_healthy
     environment:
-      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}  # Use same connection string
+      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
     command: >
-      bash -c "
-        echo 'Waiting for database...' &&
-        sleep 5 &&
-        cd /src &&
-        dotnet ef database update --no-build &&
-        echo 'Migration completed successfully'
+      sh -c "
+        echo '🚀 Starting database migration...' &&
+        echo 'Connection: ${ConnectionStrings__DefaultConnection}' &&
+        dotnet ef database update --verbose &&
+        echo '✅ Migration completed successfully!'
       "
-    volumes:
-      - .:/src
     networks:
       - app-network
+    restart: "no"  # Migration should not restart after completion
 
 volumes:
   postgres_data:

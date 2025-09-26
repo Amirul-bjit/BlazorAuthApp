@@ -1,0 +1,24 @@
+# Migration-specific Dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS migration
+
+WORKDIR /src
+
+# Copy csproj and restore dependencies
+COPY ["BlazorAuthApp.csproj", "./"]
+RUN dotnet restore
+
+# Copy everything else
+COPY . .
+
+# Install EF Core tools globally
+RUN dotnet tool install --global dotnet-ef
+ENV PATH="$PATH:/root/.dotnet/tools"
+
+# Build the project (needed for EF migrations)
+RUN dotnet build -c Release --no-restore
+
+# Set working directory for migration commands
+WORKDIR /src
+
+# Default command - can be overridden in docker-compose
+CMD ["dotnet", "ef", "database", "update", "--no-build"]
