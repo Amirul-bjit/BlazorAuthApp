@@ -34,6 +34,7 @@ A modern, full-featured blog application built with Blazor Server, ASP.NET Core 
 - **Search & Filtering**: Filter blogs by categories and sort options
 - **Responsive Design**: Mobile-first responsive UI
 - **Soft Delete**: Safe deletion with recovery options
+- **Image Upload**: AWS S3 integration for file storage
 
 ## Architecture
 
@@ -46,6 +47,7 @@ Services/
 ├── BlogLikeService.cs      # Like/unlike functionality
 ├── BlogCommentService.cs   # Comment management
 ├── CategoryService.cs      # Category operations
+├── ImageUploadService.cs   # AWS S3 file upload management
 └── Interfaces/             # Service contracts
 ```
 
@@ -55,6 +57,7 @@ Services/
 - **BlogLikeService**: Handles blog like/unlike functionality
 - **BlogCommentService**: Manages blog comments and threading
 - **CategoryService**: Category management with pagination
+- **ImageUploadService**: AWS S3 file upload and management
 
 ### Data Layer
 - **Entity Framework Core** for data access
@@ -68,6 +71,7 @@ Services/
 - **Backend**: ASP.NET Core 9.0
 - **Authentication**: ASP.NET Core Identity
 - **Database**: Entity Framework Core with PostgreSQL
+- **File Storage**: AWS S3
 - **UI Components**: Custom Blazor components
 - **Styling**: Custom CSS with Bootstrap integration
 - **Containerization**: Docker & Docker Compose
@@ -81,7 +85,7 @@ Services/
 - **Docker** and **Docker Compose** (latest version)
 - **Git** for version control
 - **4GB+ RAM** available for containers
-- **Ports available**: 5000 (app), 5434 (database)
+- **Ports available**: 8080 (app), 5432 (database)
 
 #### For Local Development (Without Docker)
 - **.NET 9.0 SDK**
@@ -100,87 +104,143 @@ This is the fastest way to get the application running with all dependencies:
 git clone https://github.com/Amirul-bjit/BlazorAuthApp.git
 cd BlazorAuthApp
 
-# 2. Start everything with Docker Compose
+# 2. Configure environment variables
+cp .env.example .env
+# Edit .env with your AWS credentials and other settings
+
+# 3. Start everything with Docker Compose
 docker-compose up --build
 ```
 
-### Docker Architecture Overview
+### Container Architecture Overview
 
-The Docker setup creates a multi-container environment with the following services:
+The Docker setup creates a secure multi-container environment with the following architecture:
 
-#### Container Architecture
+#### BlazorAuthApp Multi-Container System
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   db-migrate    │───▶│     pgdb        │◀───│   blazorapp     │
+│   migration     │───▶│       db        │◀───│     webapp      │
 │  (runs once)    │    │  (PostgreSQL)   │    │ (Blazor Server) │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
        │                        │                        │
        └────────────────────────┼────────────────────────┘
                                 │
-                        app-network (Docker)
+                        app-network (Docker Bridge)
+                                │
+                       postgres_data (Volume)
 ```
 
-#### Service Details
+#### Container Details
 
-1. **Database Migration Service (`db-migrate`)**
-   - **Purpose**: Applies Entity Framework migrations on startup
-   - **Base Image**: Uses same Dockerfile as main app
-   - **Lifecycle**: Runs once, applies migrations, then exits
-   - **Dependencies**: Waits for PostgreSQL to be healthy
-   - **Command**: `dotnet ef database update --project ./src`
+**1. Database Container (`blazorauthapp-db-1`)**
+- **Service Name**: `db`
+- **Image**: `postgres:15`
+- **Purpose**: PostgreSQL database server
+- **Port Mapping**: `5432:5432` (host:container)
+- **Network**: `app-network`
+- **Volume**: `postgres_data:/var/lib/postgresql/data`
+- **Environment Variables**:
+  - `POSTGRES_PASSWORD`
+  - `POSTGRES_USER` (defaults to postgres)
+  - `POSTGRES_DB` (defaults to blazorauth)
+- **Health Check**: `pg_isready` command every 10s
+- **Lifecycle**: Long-running service
 
-2. **Blazor Application (`blazorapp`)**
-   - **Purpose**: Main web application server
-   - **Base Image**: Built from custom Dockerfile
-   - **Port Mapping**: Host:5000 → Container:8080
-   - **Dependencies**: Waits for database and migration completion
-   - **Health Check**: HTTP endpoint monitoring
+**2. Migration Container (`blazorauthapp-migration-1`)**
+- **Service Name**: `migration`
+- **Build**: `Dockerfile.migration`
+- **Purpose**: Database schema initialization
+- **Network**: `app-network`
+- **Dependencies**: Waits for db health check to pass
+- **Environment Variables**:
+  - `ConnectionStrings__DefaultConnection`
+  - AWS credentials (for application startup compatibility)
+- **Command**: `dotnet ef database update --verbose`
+- **Lifecycle**: Runs once, exits after completion (`restart: no`)
 
-3. **PostgreSQL Database (`pgdb`)**
-   - **Purpose**: Primary data storage
-   - **Base Image**: `postgres:15`
-   - **Port Mapping**: Host:5434 → Container:5432
-   - **Volume**: `pgdata` for persistent storage
-   - **Health Check**: `pg_isready` command
+**3. Web Application Container (`blazorauthapp-webapp-1`)**
+- **Service Name**: `webapp`
+- **Build**: `Dockerfile`
+- **Purpose**: Blazor Server application
+- **Port Mapping**: `8080:8080` (host:container)
+- **Network**: `app-network`
+- **Dependencies**: Waits for migration to complete successfully
+- **Environment Variables**:
+  - `ASPNETCORE_URLS=http://+:8080`
+  - `ASPNETCORE_ENVIRONMENT=Production`
+  - `ConnectionStrings__DefaultConnection`
+  - AWS credentials and configuration
+  - File upload settings (`MAX_FILE_SIZE_BYTES`, `ALLOWED_EXTENSIONS`)
+- **Lifecycle**: Long-running service
 
-### Docker Images Created
+### Container Startup Sequence
 
-#### 1. Main Application Image
-- **Name**: `blazorauthapp-blazorapp`
-- **Base**: `mcr.microsoft.com/dotnet/sdk:9.0`
-- **Size**: ~1.2GB (includes .NET SDK for EF tools)
-- **Contents**:
-  - Compiled Blazor Server application
-  - Entity Framework Core CLI tools
-  - Source code for migrations
-  - Health check utilities
-  - Non-root user (`dotnetuser`)
+```
+1. Network Creation
+   └── app-network (bridge) created
 
-**Dockerfile Structure:**
-```dockerfile
-# Multi-stage build
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-# ... build application
+2. Volume Creation
+   └── postgres_data volume created
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS final
-# ... runtime with EF tools for migrations
+3. Database Startup
+   ├── db container starts
+   ├── PostgreSQL initializes database
+   ├── Health check begins (pg_isready every 10s)
+   └── Status: HEALTHY
+
+4. Migration Execution
+   ├── migration container starts (depends on db health)
+   ├── Connects to database
+   ├── Runs EF Core migrations
+   ├── Exits with code 0 (success)
+   └── Status: COMPLETED
+
+5. Web Application Startup
+   ├── webapp container starts (depends on migration completion)
+   ├── Loads application configuration
+   ├── Connects to database
+   ├── Initializes AWS services
+   └── Status: RUNNING on port 8080
 ```
 
-#### 2. PostgreSQL Database
-- **Image**: `postgres:15` (official)
-- **Container**: `blazorauthapp-pgdb-1`
-- **Size**: ~375MB
-- **Features**:
-  - UTF-8 encoding by default
-  - Health check integration
-  - Persistent data volume
-  - Custom initialization if needed
+### Data Flow Architecture
 
-#### 3. Migration Service
-- **Image**: Same as main application
-- **Purpose**: Database schema management
-- **Lifecycle**: Runs migrations then exits with code 0
-- **Benefits**: Ensures database is ready before app starts
+```
+External Request (port 8080)
+└── webapp container
+    ├── Blazor Server App
+    ├── Identity Authentication
+    ├── Business Logic Services
+    │   ├── BlogService
+    │   ├── CategoryService
+    │   ├── BlogLikeService
+    │   ├── BlogCommentService
+    │   └── ImageUploadService
+    ├── Database Connection
+    │   └── db container (PostgreSQL)
+    └── External Services
+        └── AWS S3 (image storage)
+```
+
+### Container Communication
+
+- **webapp ←→ db**: PostgreSQL protocol, port 5432
+- **webapp → AWS S3**: HTTPS, external
+- **migration ←→ db**: PostgreSQL protocol, port 5432, temporary
+- **Host → webapp**: HTTP, port 8080
+
+### Security Architecture
+
+**Network Isolation:**
+- All containers in private `app-network`
+- Only webapp exposed to host (port 8080)
+- Database accessible only from internal network
+- Migration has temporary access to database
+
+**Environment Variables:**
+- Sensitive data (.env file → container env vars)
+- No hardcoded credentials in images
+- AWS credentials passed securely via env vars
 
 ### Development vs Production Modes
 
@@ -197,23 +257,15 @@ docker-compose up --build -d
 - Detailed error pages and debugging info
 - Verbose logging output
 - Development connection strings
-- Hot reload capabilities (when source is mounted)
-
-**Environment Variables:**
-```yaml
-environment:
-  - ASPNETCORE_ENVIRONMENT=Development
-  - ConnectionStrings__DefaultConnection=Host=pgdb;Port=5432;Database=database;Username=user;Password=password
-```
 
 **Access Points:**
-- **Application**: http://localhost:5000
-- **Database**: localhost:5434 (for external tools like pgAdmin)
+- **Application**: http://localhost:8080
+- **Database**: localhost:5432 (for external tools)
 
 #### Production Mode
 ```bash
-# Modify docker-compose.yml environment or use environment file
-# Set ASPNETCORE_ENVIRONMENT=Production
+# Set environment variables for production
+# ASPNETCORE_ENVIRONMENT=Production in .env file
 docker-compose up --build -d
 ```
 
@@ -223,114 +275,25 @@ docker-compose up --build -d
 - Security headers enabled
 - Performance optimizations
 
-**Recommended Production Changes:**
-1. **Use environment files for secrets**
-2. **Enable HTTPS with reverse proxy**
-3. **Use production-grade PostgreSQL settings**
-4. **Implement monitoring and logging**
+### Container Resource Requirements
 
-### Container Networking
+**db container:**
+- CPU: Moderate (database operations)
+- Memory: ~128MB base + query cache
+- Disk: Persistent volume for data
+- Network: Internal only (except exposed port)
 
-The Docker setup creates an isolated bridge network (`app-network`):
+**migration container:**
+- CPU: Low (short-lived)
+- Memory: ~256MB (.NET SDK + EF tools)
+- Disk: Temporary (exits after completion)
+- Network: Internal only
 
-- **Internal Communication**: Containers communicate using service names
-  - `blazorapp` → `pgdb` (database connection)
-  - `db-migrate` → `pgdb` (migration connection)
-- **External Access**: Only through mapped ports
-  - Port 5000: Blazor application
-  - Port 5434: PostgreSQL (optional, for external tools)
-
-### Persistent Data Management
-
-#### Volumes
-- **`pgdata`**: PostgreSQL data files
-  - **Location**: Docker managed volume
-  - **Persistence**: Survives container restarts and rebuilds
-  - **Backup**: Can be backed up using `docker volume` commands
-
-#### Data Persistence Scenarios
-```bash
-# Restart containers (data preserved)
-docker-compose restart
-
-# Rebuild app (database data preserved)
-docker-compose up --build
-
-# Complete reset (data lost)
-docker-compose down --volumes
-```
-
-### Docker Commands Reference
-
-#### Basic Operations
-```bash
-# Start all services
-docker-compose up --build
-
-# Start in background (detached)
-docker-compose up --build -d
-
-# Stop all services
-docker-compose down
-
-# View logs
-docker-compose logs -f                    # All services
-docker-compose logs -f blazorapp          # Blazor app only
-docker-compose logs -f pgdb               # Database only
-docker-compose logs -f db-migrate         # Migration service
-```
-
-#### Management Commands
-```bash
-# Check container status
-docker-compose ps
-
-# Execute commands in containers
-docker exec -it blazorauthapp-blazorapp-1 bash
-docker exec -it blazorauthapp-pgdb-1 psql -U user -d database
-
-# View container resource usage
-docker stats
-
-# Clean up unused resources
-docker system prune -f
-```
-
-#### Database Operations
-```bash
-# Manual migration run
-docker-compose run --rm db-migrate
-
-# Database backup
-docker exec blazorauthapp-pgdb-1 pg_dump -U user database > backup.sql
-
-# Database restore
-docker exec -i blazorauthapp-pgdb-1 psql -U user -d database < backup.sql
-```
-
-#### Troubleshooting Commands
-```bash
-# View detailed container information
-docker inspect blazorauthapp-blazorapp-1
-
-# Check network connectivity
-docker network inspect blazorauthapp_app-network
-
-# Restart specific service
-docker-compose restart blazorapp
-```
-
-### Complete Cleanup
-```bash
-# Remove containers, networks, and images
-docker-compose down --rmi all --remove-orphans
-
-# Remove everything including data volumes
-docker-compose down --rmi all --volumes --remove-orphans
-
-# Clean up all Docker resources
-docker system prune -a --volumes -f
-```
+**webapp container:**
+- CPU: Moderate to High (Blazor Server)
+- Memory: ~256-512MB (.NET runtime + app)
+- Disk: Application files only
+- Network: External port 8080 + internal
 
 ## Local Development (Without Docker)
 
@@ -345,7 +308,7 @@ docker system prune -a --volumes -f
 
 2. **Install PostgreSQL**
    - Download from [postgresql.org](https://www.postgresql.org/download/)
-   - Create database: `CREATE DATABASE BlazorAuthApp;`
+   - Create database: `CREATE DATABASE blazorauth;`
    - Create user with appropriate permissions
 
 3. **Update Configuration**
@@ -354,7 +317,7 @@ docker system prune -a --volumes -f
    ```json
    {
      "ConnectionStrings": {
-       "DefaultConnection": "Host=localhost;Database=BlazorAuthApp;Username=your_user;Password=your_password;Port=5432"
+       "DefaultConnection": "Host=localhost;Database=blazorauth;Username=postgres;Password=your_password;Port=5432"
      }
    }
    ```
@@ -377,55 +340,72 @@ docker system prune -a --volumes -f
 7. **Access Application**
    - Navigate to: `https://localhost:7219` or `http://localhost:5269`
 
-### Local Development Benefits
-- Faster build times during development
-- Native debugging in IDE
-- Direct file system access
-- Easier code changes and testing
+## Configuration
 
-### Local Development Considerations
-- Manual PostgreSQL setup and maintenance required
-- No built-in database administration tools
-- Environment setup complexity
-- Dependency management across different systems
+### Environment Variables
+
+This project uses environment variables for configuration. Copy `.env.example` to `.env` and fill in your values before running:
+
+```bash
+# Database Configuration
+POSTGRES_PASSWORD=your_secure_password
+POSTGRES_USER=postgres
+POSTGRES_DB=blazorauth
+DB_CONNECTION_STRING=Host=db;Database=blazorauth;Username=postgres;Password=your_secure_password
+
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_DEFAULT_REGION=us-east-1
+S3_BUCKET_NAME=your_bucket_name
+
+# File Upload Configuration
+MAX_FILE_SIZE_BYTES=10485760
+ALLOWED_EXTENSIONS=.jpg,.jpeg,.png,.gif,.webp,.bmp
+PUBLIC_READ_ACCESS=true
+```
+
+### Required Variables
+- `AWS_ACCESS_KEY_ID` - AWS access key for S3
+- `AWS_SECRET_ACCESS_KEY` - AWS secret key for S3
+- `AWS_DEFAULT_REGION` - AWS region for S3 bucket
+- `S3_BUCKET_NAME` - S3 bucket name for file storage
+- `POSTGRES_PASSWORD` - PostgreSQL password
+- `DB_CONNECTION_STRING` - Database connection string
+- `MAX_FILE_SIZE_BYTES` - Maximum file upload size
+- `ALLOWED_EXTENSIONS` - Allowed file extensions
+- `PUBLIC_READ_ACCESS` - S3 public read access setting
+
+See `.env.example` for details and default values.
 
 ## Database Management
 
-### Connecting External pgAdmin
+### Container Database Access
 
-To connect an external pgAdmin installation to your Dockerized PostgreSQL:
+#### Using Docker Commands
+```bash
+# List all tables
+docker exec -it blazorauthapp-db-1 psql -U postgres -d blazorauth -c "\dt"
 
-1. **Ensure PostgreSQL port is exposed** (already configured in docker-compose.yml)
-2. **Install pgAdmin** locally or run in separate Docker container
-3. **Create server connection**:
-   - **Host**: localhost (or your EC2 public IP if deployed remotely)
-   - **Port**: 5434
-   - **Database**: database
-   - **Username**: user
-   - **Password**: password
+# Access PostgreSQL shell
+docker exec -it blazorauthapp-db-1 psql -U postgres -d blazorauth
 
-### Database Credentials
+# Check migrations history
+docker exec -it blazorauthapp-db-1 psql -U postgres -d blazorauth -c "SELECT * FROM \"__EFMigrationsHistory\";"
+```
 
-#### Docker Environment
-- **Host**: `pgdb` (internal) or `localhost` (external)
-- **Port**: `5432` (internal) or `5434` (external)
-- **Database**: `database`
-- **Username**: `user`
-- **Password**: `password`
-
-#### Security Considerations
-For production deployments:
-- Change default credentials
-- Use environment variables for sensitive data
-- Restrict database port access
-- Enable SSL connections
-- Implement regular backup strategies
+#### Database Credentials (Docker Environment)
+- **Host**: `db` (internal) or `localhost` (external)
+- **Port**: `5432` (both internal and external)
+- **Database**: `blazorauth`
+- **Username**: `postgres`
+- **Password**: Set in `.env` file
 
 ## Migration Management
 
 ### Automatic Migrations (Docker)
 
-The Docker setup automatically handles database migrations through the `db-migrate` service:
+The Docker setup automatically handles database migrations through the `migration` service:
 
 1. **On startup**: Migration service runs first
 2. **Checks database**: Compares current schema with migrations
@@ -435,186 +415,126 @@ The Docker setup automatically handles database migrations through the `db-migra
 
 ### Manual Migration Operations
 
+#### Check Migration Status
+```bash
+# View migration logs
+docker-compose logs migration
+
+# Check applied migrations
+docker exec -it blazorauthapp-db-1 psql -U postgres -d blazorauth -c "SELECT * FROM \"__EFMigrationsHistory\";"
+```
+
 #### Create New Migration
 ```bash
 # Local development
 dotnet ef migrations add YourMigrationName
 
 # Docker environment
-docker-compose run --rm blazorapp dotnet ef migrations add YourMigrationName --project ./src
+docker-compose run --rm webapp dotnet ef migrations add YourMigrationName --project ./src
 ```
 
-#### Apply Migrations
+#### Apply Migrations Manually
 ```bash
-# Local development
-dotnet ef database update
-
-# Docker environment (automatic on container start)
-docker-compose run --rm db-migrate
-```
-
-#### Rollback Migration
-```bash
-# Local development
-dotnet ef database update PreviousMigrationName
-
 # Docker environment
-docker-compose run --rm blazorapp dotnet ef database update PreviousMigrationName --project ./src
+docker-compose run --rm migration
+
+# Or with verbose output
+docker-compose run --rm webapp dotnet ef database update --verbose --project ./src
 ```
 
-## Configuration
+## Docker Commands Reference
 
-### Environment Variables
+### Basic Operations
+```bash
+# Start all services
+docker-compose up --build
 
-This project uses environment variables for configuration. Copy `.env.example` to `.env` or `.env.docker` and fill in your secrets before running locally or in Docker.
+# Start in background (detached)
+docker-compose up --build -d
 
-- For Docker, use `.env.docker` and run:
-  ```pwsh
-  docker compose --env-file .env.docker up -d
-  ```
-- For local development, use `.env`.
+# Stop all services
+docker-compose down
 
-### Required variables
-- AWS_ACCESS_KEY_ID
-- AWS_SECRET_ACCESS_KEY
-- AWS_DEFAULT_REGION
-- S3_BUCKET_NAME
-- POSTGRES_PASSWORD
-- DB_CONNECTION_STRING
-- MAX_FILE_SIZE_BYTES
-- ALLOWED_EXTENSIONS
-- PUBLIC_READ_ACCESS
+# View logs
+docker-compose logs -f                    # All services
+docker-compose logs -f webapp             # Blazor app only
+docker-compose logs -f db                 # Database only
+docker-compose logs -f migration          # Migration service
+```
 
-See `.env.example` for details.
+### Management Commands
+```bash
+# Check container status
+docker-compose ps
 
-### Custom Configuration Options
+# Execute commands in containers
+docker exec -it blazorauthapp-webapp-1 bash
+docker exec -it blazorauthapp-db-1 psql -U postgres -d blazorauth
 
-Override settings using:
-1. **Environment Variables**: Use double underscores for nested config (e.g., `ConnectionStrings__DefaultConnection`)
-2. **User Secrets**: For development credentials (`dotnet user-secrets`)
-3. **appsettings.{Environment}.json**: Environment-specific settings
-4. **Docker environment files**: `.env` files for container configuration
+# View container resource usage
+docker stats
+
+# Clean up unused resources
+docker system prune -f
+```
+
+### Database Operations
+```bash
+# Manual migration run
+docker-compose run --rm migration
+
+# Database backup
+docker exec blazorauthapp-db-1 pg_dump -U postgres blazorauth > backup.sql
+
+# Database restore
+docker exec -i blazorauthapp-db-1 psql -U postgres -d blazorauth < backup.sql
+```
+
+### Troubleshooting Commands
+```bash
+# View detailed container information
+docker inspect blazorauthapp-webapp-1
+
+# Check network connectivity
+docker network inspect blazorauthapp_app-network
+
+# Restart specific service
+docker-compose restart webapp
+
+# Complete cleanup
+docker-compose down --rmi all --volumes --remove-orphans
+```
 
 ## Production Deployment
 
 ### Docker-based Production Deployment
 
-#### 1. Environment Preparation
+#### Environment Preparation
 ```bash
 # Create production environment file
-cat > .env.production << EOF
+cat > .env << EOF
 ASPNETCORE_ENVIRONMENT=Production
-DB_HOST=your-prod-db-host
-DB_PORT=5432
-DB_NAME=your-prod-database
-DB_USER=your-prod-user
-DB_PASSWORD=your-secure-password
+POSTGRES_PASSWORD=your-secure-production-password
+AWS_ACCESS_KEY_ID=your-production-access-key
+AWS_SECRET_ACCESS_KEY=your-production-secret-key
+# ... other production settings
 EOF
 ```
 
-#### 2. Production docker-compose.yml
-```yaml
-version: '3.8'
-services:
-  blazorapp:
-    build: .
-    ports:
-      - "80:8080"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Host=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}
-    env_file:
-      - .env.production
-    restart: unless-stopped
-    depends_on:
-      db-migrate:
-        condition: service_completed_successfully
-
-  db-migrate:
-    build: .
-    environment:
-      - ConnectionStrings__DefaultConnection=Host=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}
-    env_file:
-      - .env.production
-    entrypoint: ["dotnet", "ef", "database", "update", "--project", "./src"]
-    restart: "no"
-```
-
-#### 3. Deploy to Production
+#### Deploy to Production
 ```bash
 # Build and deploy
-docker-compose -f docker-compose.prod.yml up --build -d
-
-# Monitor logs
-docker-compose -f docker-compose.prod.yml logs -f
-```
-
-### EC2 Docker Deployment
-
-#### Current EC2 Setup - How It Works
-
-**Your Current Architecture on EC2:**
-```
-EC2 Instance (t3.small)
-├── Docker Engine
-├── BlazorAuthApp containers:
-│   ├── db-migrate (runs once, exits)
-│   ├── blazorapp (web server)
-│   └── pgdb (PostgreSQL database)
-└── Docker volumes:
-    └── pgdata (database storage)
-```
-
-**Current Workflow:**
-
-1. **SSH to EC2**: You connect via EC2 Instance Connect or SSH
-2. **Run Docker Compose**: `docker-compose up --build -d`
-3. **Container Orchestration**:
-   - PostgreSQL starts first and runs health checks
-   - Migration container runs EF Core migrations, then exits
-   - Blazor app starts and connects to database
-4. **Data Storage**: Database data persists in Docker volume on EC2 disk
-5. **Access**: Application available at `http://EC2_PUBLIC_IP:5000`
-
-#### EC2 Deployment Steps
-
-```bash
-# 1. Connect to your EC2 instance
-ssh -i your-key.pem ec2-user@your-ec2-public-ip
-
-# 2. Clone the repository (if not already done)
-git clone https://github.com/Amirul-bjit/BlazorAuthApp.git
-cd BlazorAuthApp
-
-# 3. Start the application
 docker-compose up --build -d
 
-# 4. Monitor the deployment
+# Monitor logs
 docker-compose logs -f
-
-# 5. Access your application
-# Navigate to: http://your-ec2-public-ip:5000
 ```
 
 ### Cloud Deployment Options
 
-#### AWS ECS/EC2
-1. **Push image to ECR**
-2. **Configure ECS service**
-3. **Use RDS for PostgreSQL**
-4. **Set up Application Load Balancer**
-
-#### Azure Container Instances
-1. **Push to Azure Container Registry**
-2. **Deploy container group**
-3. **Use Azure Database for PostgreSQL**
-4. **Configure Application Gateway**
-
-#### Google Cloud Run
-1. **Push to Google Container Registry**
-2. **Deploy Cloud Run service**
-3. **Use Cloud SQL for PostgreSQL**
-4. **Configure load balancing**
+- **AWS ECS/EC2**: Container service with RDS PostgreSQL
+- **Azure Container Instances**: With Azure Database for PostgreSQL
+- **Google Cloud Run**: With Cloud SQL for PostgreSQL
 
 ## Monitoring and Logging
 
@@ -624,29 +544,23 @@ docker-compose logs -f
 docker-compose ps
 
 # View health check logs
-docker inspect --format='{{.State.Health}}' blazorauthapp-blazorapp-1
+docker inspect --format='{{.State.Health}}' blazorauthapp-webapp-1
 
 # Monitor resource usage
-docker stats blazorauthapp-blazorapp-1 blazorauthapp-pgdb-1
+docker stats blazorauthapp-webapp-1 blazorauthapp-db-1
 ```
 
 ### Application Logging
 ```bash
 # Real-time application logs
-docker-compose logs -f blazorapp
+docker-compose logs -f webapp
 
 # Database logs
-docker-compose logs -f pgdb
+docker-compose logs -f db
 
 # Export logs to file
-docker-compose logs blazorapp > app-logs.txt
+docker-compose logs webapp > app-logs.txt
 ```
-
-### Production Monitoring Setup
-- **Application Insights** (Azure)
-- **CloudWatch** (AWS)
-- **Prometheus + Grafana** (self-hosted)
-- **ELK Stack** for log aggregation
 
 ## Troubleshooting
 
@@ -667,65 +581,25 @@ docker inspect container-name
 #### Database Connection Issues
 ```bash
 # Test database connectivity
-docker exec blazorauthapp-pgdb-1 pg_isready -U user -d database
+docker exec blazorauthapp-db-1 pg_isready -U postgres -d blazorauth
 
 # Check database logs
-docker-compose logs pgdb
+docker-compose logs db
 
 # Test from application container
-docker exec blazorauthapp-blazorapp-1 psql -h pgdb -U user -d database -c "SELECT version();"
+docker exec blazorauthapp-webapp-1 psql -h db -U postgres -d blazorauth -c "SELECT version();"
 ```
 
 #### Migration Failures
 ```bash
 # Check migration logs
-docker-compose logs db-migrate
+docker-compose logs migration
 
 # Manual migration run with verbose output
-docker-compose run --rm db-migrate dotnet ef database update --project ./src --verbose
+docker-compose run --rm webapp dotnet ef database update --project ./src --verbose
 
-# Reset migrations (caution: data loss)
+# Reset database (caution: data loss)
 docker-compose down --volumes
-docker-compose up --build
-```
-
-#### Port Conflicts
-```bash
-# Check what's using ports
-netstat -tulpn | grep :5000
-netstat -tulpn | grep :5434
-
-# Kill conflicting processes or change ports in docker-compose.yml
-```
-
-### Performance Issues
-
-#### Container Resource Usage
-```bash
-# Monitor resource consumption
-docker stats
-
-# Increase container resources if needed (modify docker-compose.yml)
-deploy:
-  resources:
-    limits:
-      memory: 2G
-      cpus: '1.0'
-```
-
-#### Database Performance
-```bash
-# Check database performance
-docker exec blazorauthapp-pgdb-1 psql -U user -d database -c "SELECT * FROM pg_stat_activity;"
-
-# Optimize PostgreSQL settings for your workload
-```
-
-### Complete System Reset
-```bash
-# Nuclear option: remove everything and start fresh
-docker-compose down --rmi all --volumes --remove-orphans
-docker system prune -a --volumes -f
 docker-compose up --build
 ```
 
@@ -739,6 +613,8 @@ We welcome contributions! Here's how you can help:
 ```bash
 git clone https://github.com/Amirul-bjit/BlazorAuthApp.git
 cd BlazorAuthApp
+cp .env.example .env
+# Edit .env with your settings
 docker-compose up --build
 ```
 
@@ -772,7 +648,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Bootstrap team for the responsive CSS framework
 - PostgreSQL community for the robust database
 - Docker for containerization platform
+- AWS for S3 storage services
 
 ---
 
-**Built with Blazor Server, ASP.NET Core, and PostgreSQL**
+**Built with Blazor Server, ASP.NET Core, PostgreSQL, and AWS S3**
